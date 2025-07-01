@@ -128,13 +128,60 @@ checkpoints_folder = sly.solution.LinkNode(
     description="View the folder containing the model checkpoints.",
     link="",
     width=200,
-    x=1400,
-    y=2290,
+    x=790,
+    y=2090,
     # icon=Icons(class_name="zmdi zmdi-folder"),
 )
+eval_report_after_training = EvaluationReportNode(
+    g.api,
+    g.project,
+    BENCHMARK_DIR,
+    "Evaluation Report",
+    "Quick access to the evaluation report of the model after training. The report contains the model performance metrics and visualizations.",
+    width=200,
+    x=790,
+    y=2000,
+)
+compare_desc = "Compare evaluation results from the latest training session againt the best model reference report. "
+"Helps track performance improvements over time and identify the most effective training setups. "
+"If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process."
+compare = CompareNode(
+    g.api,
+    g.project,
+    "Compare Reports",
+    compare_desc,
+    250,
+    1200,
+    2400,
+    tooltip_position="left",
+)
+email_creds = SendEmailNode.EmailCredentials("user123@gmail.com", "pass123")
+send_email = SendEmailNode(
+    email_creds,
+    target_addresses="user321@gmail.com",
+    width=200,
+    x=1400,
+    y=2500,
+    tooltip_position="left",
+)
+comparison_report = sly.solution.LinkNode(
+    title="Comparison Report",
+    description="Quick access to the most recent comparison report"
+    "between the latest training session and the best model reference. "
+    "Will be used to assess improvements and decide whether to update the deployed model.",
+    link="",
+    width=200,
+    x=1400,
+    y=2600,
+    icon=sly.app.widgets.Icons(
+        class_name="zmdi zmdi-open-in-new", color="#FF00A6", bg_color="#FFBCED"
+    ),
+    tooltip_position="left",
+)
+comparison_report.node.disable()
 
 # * Create a SolutionGraphBuilder instance
-graph_builder = sly.solution.SolutionGraphBuilder(height="2500px")
+graph_builder = sly.solution.SolutionGraphBuilder(height="2800px")
 
 # * Add nodes to the graph
 graph_builder.add_node(cloud_import)
@@ -152,7 +199,10 @@ graph_builder.add_node(versioning)
 graph_builder.add_node(experiments)
 graph_builder.add_node(evaluation_report)
 graph_builder.add_node(checkpoints_folder)
-
+graph_builder.add_node(eval_report_after_training)
+graph_builder.add_node(compare)
+graph_builder.add_node(send_email)
+graph_builder.add_node(comparison_report)
 
 # * Add edges between nodes
 graph_builder.add_edge(cloud_import, input_project, path="grid")
@@ -175,8 +225,11 @@ graph_builder.add_edge(move_labeled, training_project)
 graph_builder.add_edge(training_project, versioning)
 # graph_builder.add_edge(versioning, train_rt_detr)
 graph_builder.add_edge(experiments, evaluation_report, end_socket="left", path="grid")
-graph_builder.add_edge(experiments, checkpoints_folder, end_socket="left", path="grid")
-
+graph_builder.add_edge(versioning, checkpoints_folder, end_socket="left", path="grid")
+graph_builder.add_edge(versioning, eval_report_after_training, end_socket="left", path="grid")
+graph_builder.add_edge(experiments, compare)
+graph_builder.add_edge(compare, send_email, end_socket="left", path="grid")
+graph_builder.add_edge(compare, comparison_report, end_socket="left", path="grid")
 
 # * Build the layout
 layout = graph_builder.build()

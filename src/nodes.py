@@ -1,5 +1,6 @@
 import src.sly_globals as g
 import supervisely as sly
+from src.components import *
 
 cloud_import = sly.solution.CloudImport(
     api=g.api,
@@ -111,14 +112,25 @@ experiments = sly.solution.LinkNode(
     description="Track all experiments in one place. The best model for comparison will be selected from the list of experiments based on the mAP metric.",
     link=sly.utils.abs_url("/nn/experiments"),
 )
-
-evaluation_report = sly.solution.LinkNode(
+BENCHMARK_DIR = ""
+evaluation_report = EvaluationReportNode(
+    api=g.api,
+    project_info=g.project,
+    benchmark_dir=BENCHMARK_DIR,
+    title="Evaluation Report",
+    description="Quick access to the latest evaluation report of the best model from the Experiments. The report contains the model performance metrics and visualizations. Will be used as a reference for comparing with models from the next experiments.",
+    width=200,
     x=1400,
     y=2140,
-    title="Evaluation Report",
-    width=200,
-    description="Quick access to the latest evaluation report of the best model from the Experiments. The report contains the model performance metrics and visualizations. Will be used as a reference for comparing with models from the next experiments.",
+)
+checkpoints_folder = sly.solution.LinkNode(
+    title="Checkpoints Folder",
+    description="View the folder containing the model checkpoints.",
     link="",
+    width=200,
+    x=1400,
+    y=2290,
+    # icon=Icons(class_name="zmdi zmdi-folder"),
 )
 
 # * Create a SolutionGraphBuilder instance
@@ -139,6 +151,7 @@ graph_builder.add_node(versioning)
 # graph_builder.add_node(train_rt_detr)
 graph_builder.add_node(experiments)
 graph_builder.add_node(evaluation_report)
+graph_builder.add_node(checkpoints_folder)
 
 
 # * Add edges between nodes
@@ -151,7 +164,7 @@ graph_builder.add_edge(queue, splits)
 graph_builder.add_edge(
     labeling_performance,
     queue,
-    start_sockert="left",
+    start_socket="left",
     end_socket="right",
     dash=True,
     end_plug="disc",
@@ -162,6 +175,7 @@ graph_builder.add_edge(move_labeled, training_project)
 graph_builder.add_edge(training_project, versioning)
 # graph_builder.add_edge(versioning, train_rt_detr)
 graph_builder.add_edge(experiments, evaluation_report, end_socket="left", path="grid")
+graph_builder.add_edge(experiments, checkpoints_folder, end_socket="left", path="grid")
 
 
 # * Build the layout

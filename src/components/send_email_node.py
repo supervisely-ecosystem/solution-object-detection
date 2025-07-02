@@ -4,6 +4,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 import supervisely as sly
 from src.components.send_email.send_email import SendEmail
+from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
     CheckboxField,
@@ -72,24 +73,39 @@ class SendEmailNode(SolutionElement):
 
         # * Notification settings modal
 
-        self._email_subject: str = None
-        self._email_body: str = None
-        self._target_addresses: List[str] = None
-
         send_email = SendEmail()
         self.settings_modal = Dialog("Notification Settings", send_email, size="tiny")
-        self.run_fn = lambda: send_email.send_email(credentials)
 
-        @send_email.apply_button.click
-        def apply_settings_cb():
-            self._email_subject = send_email.get_subject()
-            self._email_body = send_email.get_body()
-            self._target_addresses = send_email.get_target_addresses()
-            self.settings_modal.hide()
+        def send_email_fn():
+            self.hide_failed_badge()
+            self.hide_running_badge()
+            self.show_running_badge()
+            try:
+                send_email.send_email(credentials)
+                self.show_finished_badge()
+            except Exception as e:
+                sly.logger.warn(f"Failed to send email: {e}")
+                self.show_failed_badge()
+            finally:
+                self.hide_running_badge()
+
+        self.run_fn = send_email_fn
 
         @self._settings_btn.click
         def settings_click_cb():
             self.settings_modal.show()
+
+        _get_email_widget_values = lambda: {
+            "subject": send_email.get_subject(),
+            "body": send_email.get_body(),
+            "target_addresses": send_email.get_target_addresses(),
+        }
+        setattr(self, "_get_email_widget_values", _get_email_widget_values)
+
+        @send_email.apply_button.click
+        def apply_settings_cb():
+            self.save()
+            self.settings_modal.hide()
 
         # * History modal
 
@@ -103,16 +119,13 @@ class SendEmailNode(SolutionElement):
 
         # * Automation modal
 
-        self._automation_use_daily: bool = False
-        self._automation_daily_time: str = "09:00"
-        self._automation_run_after_comparison: bool = False
-
-        automation_modal = self._init_automation_modal()
-        self.automation_modal = automation_modal
+        self.automation_modal = self._init_automation_modal()
 
         @self._automate_btn.click
         def automation_click_cb():
             self.automation_modal.show()
+
+        # * Card initialization
 
         self.card = self._create_card()
         self._update_properties()
@@ -137,7 +150,7 @@ class SendEmailNode(SolutionElement):
 
     def _init_automation_modal(self):
         use_daily_switch = Switch(False)
-        daily_time_picker = TimePicker(self._automation_daily_time)
+        daily_time_picker = TimePicker(self.daily_time)
         after_comparison = CheckboxField(
             "After Comparison", "Enable to send an email after each comparison.", False
         )
@@ -163,11 +176,18 @@ class SendEmailNode(SolutionElement):
             size="tiny",
         )
 
+        def get_automation_widget_values():
+            return {
+                "use_daily": use_daily_switch.is_switched(),
+                "daily_time": daily_time_picker.get_value(),
+                "run_after_comparison": after_comparison.is_checked(),
+            }
+
+        setattr(self, "_get_automation_widget_values", get_automation_widget_values)
+
         @apply_button.click
         def apply_automation_settings():
-            self._automation_use_daily = use_daily_switch.is_switched()
-            self._automation_daily_time = daily_time_picker.get_value()
-            self._automation_run_after_comparison = after_comparison.is_checked()
+            self.save()
             self._update_properties()
             self.update_scheduler()
             automation_modal.hide()
@@ -175,48 +195,74 @@ class SendEmailNode(SolutionElement):
         return automation_modal
 
     @property
-    def run_after_comparison(self) -> bool:
-        """
-        Returns whether the email should be sent after each comparison.
-        """
-        return self._automation_run_after_comparison
-
-    @run_after_comparison.setter
-    def run_after_comparison(self, value: bool) -> None:
-        """
-        Sets whether the email should be sent after each comparison.
-        """
-        if not isinstance(value, bool):
-            raise ValueError("run_after_comparison must be a boolean value.")
-        self._automation_run_after_comparison = value
-
-    @property
     def body(self) -> str:
         """
         Returns the body of the email.
         """
-        return self._body
+        return DataJson()[self.widget_id].get("email_config", {}).get("body", "")
 
-    @body.setter
-    def body(self, value: str) -> None:
+    @property
+    def subject(self) -> str:
         """
-        Sets the body of the email.
+        Returns the subject of the email.
         """
-        if not isinstance(value, str):
-            raise ValueError("Email body must be a string.")
-        self._body = value
+        return DataJson()[self.widget_id].get("email_config", {}).get(["email_subject"], "")
+
+    @property
+    def target_addresses(self) -> List[str]:
+        """
+        Returns the list of target email addresses.
+        """
+        return DataJson()[self.widget_id].get("email_config", {}).get("target_addresses", [])
+
+    @property
+    def use_daily(self) -> bool:
+        """
+        Returns whether the email should be sent daily.
+        """
+        return DataJson()[self.widget_id].get("automation_settings", {}).get("use_daily", False)
+
+    @property
+    def daily_time(self) -> str:
+        """
+        Returns the time of day when the email should be sent if daily notifications are enabled.
+        """
+        return DataJson()[self.widget_id].get("automation_settings", {}).get("daily_time", "09:00")
+
+    @property
+    def run_after_comparison(self) -> bool:
+        """
+        Returns whether the email should be sent after each comparison.
+        """
+        return (
+            DataJson()[self.widget_id]
+            .get("automation_settings", {})
+            .get("run_after_comparison", False)
+        )
+
+    def save(self) -> None:
+        """
+        Saves the current state of the SendEmailNode.
+        """
+        DataJson()[self.widget_id]["automation_settings"] = self._get_automation_widget_values()
+        DataJson()[self.widget_id]["email_config"] = self._get_email_widget_values()
+        DataJson().send_changes()
 
     def _update_properties(self):
-        use_daily = self._automation_use_daily
-        use_after_comparison = self._automation_run_after_comparison
+        use_daily = self.use_daily
+        use_after_comparison = self.run_after_comparison
         if use_daily and use_after_comparison:
             send_value = "every day / after comparison"
+            self.show_automated_badge()
         elif use_daily and not use_after_comparison:
             send_value = "every day"
+            self.show_automated_badge()
         elif use_after_comparison and not use_daily:
             send_value = "after comparison"
+            self.show_automated_badge()
         else:
             send_value = "never"
+            self.hide_automated_badge()
         new_propetries = [
             {
                 "key": "Send",
@@ -241,14 +287,14 @@ class SendEmailNode(SolutionElement):
             self.card.update_property(**prop)
 
     def update_scheduler(self):
-        use_daily = self._automation_use_daily
+        use_daily = self.use_daily
         if not use_daily:
             if self.task_scheduler.is_job_scheduled(self.JOB_ID):
                 self.task_scheduler.remove_job(self.JOB_ID)
                 sly.logger.info("[SCHEDULER]: Daily email job is disabled.")
             return
 
-        time = self._automation_daily_time
+        time = self.daily_time
         hour, minute = map(int, time.split(":"))
         tigger = CronTrigger(hour=hour, minute=minute, second=0)
         job = self.task_scheduler.scheduler.add_job(
@@ -269,7 +315,6 @@ class SendEmailNode(SolutionElement):
         return SolutionCard(
             title=self.title,
             tooltip=self._create_tooltip(),
-            # content=[self.error_nofitication],
             width=self.width,
             tooltip_position=self.tooltip_position,
             icon=self.icon,

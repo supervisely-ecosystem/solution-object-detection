@@ -153,11 +153,11 @@ class SendEmail(Widget):
             server.ehlo()
             try:
                 server.login(self.creds.username, self.creds.password)
-            except smtplib.SMTPAuthenticationError:
-                logger.error("Failed to authenticate with the provided email credentials.")
-                return
+            except smtplib.SMTPAuthenticationError as e:
+                logger.error("Failed to auxthenticate with the provided email credentials.")
+                raise e
             except (smtplib.SMTPException, smtplib.SMTPServerDisconnected) as e:
                 logger.error(f"Failed to login to SMTP: {e}", exc_info=False)
-                return
+                raise e
             server.send_message(msg)
             logger.info(f"Email sent to {self.to_addrs}")

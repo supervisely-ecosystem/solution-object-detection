@@ -3,6 +3,10 @@ from typing import List, Literal, Optional, Union
 from apscheduler.triggers.cron import CronTrigger
 
 import supervisely as sly
+from src.components.notification_history.notification_history import (
+    Notification,
+    NotificationHistory,
+)
 from src.components.send_email.send_email import SendEmail
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
@@ -40,6 +44,7 @@ class SendEmailNode(SolutionElement):
         self.description = description
         self.width = width
         self.icon = icon or self._get_default_icon()
+        super().__init__(*args, **kwargs)
 
         self.email_username = credentials.username
 
@@ -80,14 +85,22 @@ class SendEmailNode(SolutionElement):
             self.hide_failed_badge()
             self.hide_running_badge()
             self.show_running_badge()
+            notification_origin = "Daily" if self.use_daily else "Comparison"
+            notification = Notification(self.target_addresses, notification_origin).to_json()
+            n_idx = self.notification_history.add_notification(notification)
             try:
                 send_email.send_email(credentials)
                 self.show_finished_badge()
-            except Exception as e:
-                sly.logger.warn(f"Failed to send email: {e}")
-                self.show_failed_badge()
-            finally:
                 self.hide_running_badge()
+                self.notification_history.update_notification_status(
+                    n_idx, Notification.Status.SENT
+                )
+            except:
+                self.show_failed_badge()
+                self.hide_running_badge()
+                self.notification_history.update_notification_status(
+                    n_idx, Notification.Status.FAILED
+                )
 
         self.run_fn = send_email_fn
 
@@ -109,9 +122,10 @@ class SendEmailNode(SolutionElement):
 
         # * History modal
 
-        self.history_modal = self._init_history_modal()
+        self.notification_history = NotificationHistory()
+        self.history_modal = Dialog(title="Notification History", content=self.notification_history)
 
-        self._history_btn.disable()  # until implemented
+        self._debug_add_dummy_notification()  # For debugging purposes
 
         @self._history_btn.click
         def history_click_cb():
@@ -131,22 +145,16 @@ class SendEmailNode(SolutionElement):
         self._update_properties()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
         self.modals = [self.settings_modal, self.automation_modal, self.history_modal]
-        super().__init__(*args, **kwargs)
 
-    def _init_history_modal(self):
-        history_modal = Dialog(
-            title="Notification History",
-            content=Container(
-                [
-                    Field(
-                        "History",
-                        "This feature is not implemented yet.",
-                    ),
-                ]
-            ),
-            size="tiny",
+    def _debug_add_dummy_notification(self):
+        """
+        Adds a dummy notification to the history for debugging purposes.
+        """
+        dummy_notification = Notification(
+            ["someuser123@example.com", "dummy228@yahoo.com"], "Debug"
         )
-        return history_modal
+        self.notification_history.add_notification(dummy_notification.to_json())
+        self.notification_history.update_notification_status(0, Notification.Status.SENT)
 
     def _init_automation_modal(self):
         use_daily_switch = Switch(False)
@@ -272,7 +280,9 @@ class SendEmailNode(SolutionElement):
             },
             {
                 "key": "Total",
-                "value": "0 notifications",
+                "value": "{} notifications".format(
+                    len(self.notification_history.get_notifications())
+                ),
                 "link": False,
                 "highlight": False,
             },

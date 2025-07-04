@@ -3,6 +3,11 @@ from typing import Callable, Literal, Optional
 from uuid import uuid4
 
 import supervisely as sly
+from src.components.comparison_history.comparison_history import (
+    ComparisonHistory,
+    ComparisonItem,
+)
+from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
     Container,
@@ -14,7 +19,9 @@ from supervisely.app.widgets import (
     Switch,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
+from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
+
 
 class CompareNode(SolutionElement):
     APP_SLUG = "supervisely-ecosystem/model-benchmark"
@@ -76,11 +83,14 @@ class CompareNode(SolutionElement):
         self.result_comparison_dir = None
         self.result_comparison_link = None
         self.result_best_checkpoint = None
-        self.is_automated = False
+
+        super().__init__(*args, **kwargs)
 
         self.agent_id = agent_id or self.get_available_agent_id()
         if self.agent_id is None:
             raise ValueError("No available agent found. Please check your agents.")
+
+        # Automation Modal
 
         periodic_automation = self.ComparisonAutomation(self.send_comparison_request)
         automation_switch = Switch(self.is_automated)
@@ -125,20 +135,30 @@ class CompareNode(SolutionElement):
                 self._update_properties()
 
         @apply_btn.click
-        def apply_automation():
+        def enable_automation():
             sec = automation_periodic_input.get_value()
             periodic_automation.apply(sec)
             sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
-            automation_modal.hide()
             self._update_properties()
             self.show_automated_badge()
+            automation_modal.hide()
 
+        # Task History Modal
+        self.task_history = TasksHistory(self.api)
+        task_history_modal = Dialog("Tasks History", self.task_history, "small")
+
+        # Comparison History Modal
+        self.comparison_history = ComparisonHistory()
+        comparison_history_modal = Dialog("Comparison History", self.comparison_history, "small")
+
+        # Buttons
         self._automate_btn = Button(
             "Automate",
             icon="zmdi zmdi-settings",
             button_size="mini",
             plain=True,
             button_type="text",
+            call_on_click=automation_modal.show,
         )
         self._run_btn = Button(
             "Run manually",
@@ -146,13 +166,20 @@ class CompareNode(SolutionElement):
             button_size="mini",
             plain=True,
             button_type="text",
+            call_on_click=lambda: (
+                self._run_btn.disable(),
+                self.send_comparison_request(),
+                self._run_btn.enable(),
+            ),
         )
+
         self._comparison_history_btn = Button(
             "Comparison history (reports)",
             icon="zmdi zmdi-format-list-bulleted",
             button_size="mini",
             plain=True,
             button_type="text",
+            call_on_click=comparison_history_modal.show,
         )
         self._task_history_btn = Button(
             "Tasks history (logs)",
@@ -160,46 +187,23 @@ class CompareNode(SolutionElement):
             button_size="mini",
             plain=True,
             button_type="text",
+            call_on_click=task_history_modal.show,
         )
 
-        @self._automate_btn.click
-        def automate_click_cb():
-            automation_modal.show()
+        # self.warning = NotificationBox(
+        #     "Not enough evaluation reports",
+        #     "Please select at least two evaluation reports to compare.",
+        #     box_type="warning",
+        # )
+        # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
+        # self._run_btn.disable() if self.show_warning else self.warning.hide()
 
-        @self._run_btn.click
-        def run_click_cb():
-            self.send_comparison_request()
-
-        self._comparison_history_btn.disable()
-
-        @self._comparison_history_btn.click
-        def comparison_history_click_cb():
-            sly.logger.warning("Comparison history button is not implemented yet.")
-
-        self._task_history_btn.disable()
-
-        @self._task_history_btn.click
-        def task_history_click_cb():
-            sly.logger.warning("Task history button is not implemented yet.")
-
-        self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
-        if self.show_warning:
-            self._run_btn.disable()
-
-        self.warning = NotificationBox(
-            "Not enough evaluation reports",
-            "Please select at least two evaluation reports to compare.",
-            box_type="warning",
-        )
-        if not self.show_warning:
-            self.warning.hide()
-
-        self.failed_notification = NotificationBox(
-            "Evaluation Failed",
-            "Failed to run the evaluation. Please check the logs for more details.",
-            box_type="error",
-        )
-        self.failed_notification.hide()
+        # self.failed_notification = NotificationBox(
+        #     "Evaluation Failed",
+        #     "Failed to run the evaluation. Please check the logs for more details.",
+        #     box_type="error",
+        # )
+        # self.failed_notification.hide()
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
@@ -207,7 +211,19 @@ class CompareNode(SolutionElement):
 
         self._finish_callbacks = []
 
-        super().__init__(*args, **kwargs)
+    @property
+    def is_automated(self) -> bool:
+        """
+        Returns whether the comparison is automated.
+        """
+        return DataJson()[self.widget_id].get("is_automated", False)
+
+    @is_automated.setter
+    def is_automated(self, value: bool):
+        """
+        Sets whether the comparison is automated and updates the button state accordingly.
+        """
+        DataJson()[self.widget_id]["is_automated"] = value
 
     @property
     def evaluation_dirs(self) -> list[str]:
@@ -227,14 +243,14 @@ class CompareNode(SolutionElement):
         else:
             self._run_btn.disable()
 
-        self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
-        self.warning.show() if self.show_warning else self.warning.hide()
+        # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
+        # self.warning.show() if self.show_warning else self.warning.hide()
 
     def _create_card(self) -> SolutionCard:
         """
         Creates and returns the SolutionCard for the Compare widget.
         """
-        content = [self.warning, self.failed_notification]
+        # content = [self.warning, self.failed_notification]
         return SolutionCard(
             title=self.title,
             tooltip=self._create_tooltip(),
@@ -272,6 +288,7 @@ class CompareNode(SolutionElement):
         session_running = len(available_sessions) > 0
         if session_running:
             sly.logger.info("Model Benchmark Evaluator session is already running, skipping start.")
+            self.task_history.add_task(*available_sessions[0])
             return available_sessions[0].task_id
 
         sly.logger.info("Starting Model Benchmark Evaluator task...")
@@ -284,6 +301,7 @@ class CompareNode(SolutionElement):
         )
         if task_info_json is None:
             raise RuntimeError("Failed to start the evaluation task.")
+        self.task_history.add_task(*task_info_json)
         task_id = task_info_json["taskId"]
 
         current_time = time.time()
@@ -302,22 +320,20 @@ class CompareNode(SolutionElement):
         """
         Sends a request to the backend to start the evaluation process.
         """
-        self.warning.hide()
+        # self.warning.hide()
         self.hide_failed_badge()
         self.hide_running_badge()
         self.hide_finished_badge()
         if not self.eval_dirs or len(self.eval_dirs) < 2:
             sly.logger.warning("Not enough evaluation directories provided for comparison.")
             self.show_failed_badge()
-            self.warning.show()
+            # self.warning.show()
             return
         self.show_running_badge()
         try:
             # raise RuntimeError("This is a test error to check error handling.")
             task_id = self.run_evaluator_session_if_needed()
-            request_data = {
-                "eval_dirs": self.eval_dirs,
-            }
+            request_data = {"eval_dirs": self.eval_dirs}
             response = self.api.task.send_request(
                 task_id, self.COMPARISON_ENDPOINT, data=request_data
             )
@@ -330,6 +346,10 @@ class CompareNode(SolutionElement):
             )
             # @ todo: find the best checkpoint from the evaluation results
             # self._update_properties()
+            comparison = ComparisonItem(
+                task_id, self.eval_dirs, self.result_comparison_dir, self.result_best_checkpoint
+            )
+            self.comparison_history.add_comparison(comparison)
             for cb in self._finish_callbacks:
                 cb(self.result_comparison_dir, self.result_comparison_link)
             self.show_finished_badge()
@@ -400,14 +420,14 @@ class CompareNode(SolutionElement):
         Updates the card to show that the comparison has failed.
         """
         self.card.update_badge_by_key(key="Failed", label="❌", plain=True, badge_type="error")
-        self.failed_notification.show()
+        # self.failed_notification.show()
 
     def hide_failed_badge(self):
         """
         Hides the failed badge from the card.
         """
         self.card.remove_badge_by_key(key="Failed")
-        self.failed_notification.hide()
+        # self.failed_notification.hide()
 
     def show_automated_badge(self):
         """

@@ -1,6 +1,7 @@
 import src.sly_globals as g
 import supervisely as sly
 from src.components import *
+from src.components.send_email.send_email import SendEmail
 
 cloud_import = sly.solution.CloudImport(
     api=g.api,
@@ -128,7 +129,7 @@ checkpoints_folder = sly.solution.LinkNode(
     description="View the folder containing the model checkpoints.",
     link="",
     width=200,
-    x=790,
+    x=795,
     y=2090,
     # icon=Icons(class_name="zmdi zmdi-folder"),
 )
@@ -139,7 +140,7 @@ eval_report_after_training = EvaluationReportNode(
     "Evaluation Report",
     "Quick access to the evaluation report of the model after training. The report contains the model performance metrics and visualizations.",
     width=200,
-    x=790,
+    x=795,
     y=2000,
 )
 compare_desc = "Compare evaluation results from the latest training session againt the best model reference report. "
@@ -155,7 +156,7 @@ compare = CompareNode(
     2400,
     tooltip_position="left",
 )
-email_creds = SendEmailNode.EmailCredentials("user123@gmail.com", "pass123")
+email_creds = SendEmail.EmailCredentials("user123@gmail.com", "pass123")
 send_email = SendEmailNode(
     email_creds,
     target_addresses="user321@gmail.com",

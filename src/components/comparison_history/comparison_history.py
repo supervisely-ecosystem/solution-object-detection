@@ -83,7 +83,7 @@ class ComparisonHistory(Widget):
 
     def get_comparison_items(self) -> List[Dict[str, Any]]:
         """Get the list of notifications from the state JSON."""
-        notifications = DataJson().get(self.widget_id, {}).get("notifications", [])
+        notifications = DataJson()[self.widget_id].get("notifications", [])
         if not isinstance(notifications, list):
             raise TypeError("notifications must be a list")
         return notifications
@@ -133,6 +133,7 @@ class ComparisonHistory(Widget):
 
             @self._comparison_table.row_click
             def on_row_click(clicked_row: FastTable.ClickedRow):
+                # @TODO
                 # self.logs.set_task_id(clicked_row.row[0])
                 # self.logs_modal.show()
                 pass

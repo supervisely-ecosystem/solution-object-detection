@@ -146,7 +146,7 @@ eval_report_after_training = EvaluationReportNode(
 compare_desc = "Compare evaluation results from the latest training session againt the best model reference report. "
 "Helps track performance improvements over time and identify the most effective training setups. "
 "If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process."
-compare = CompareNode(
+compare_node = CompareNode(
     g.api,
     g.project,
     "Compare Reports",
@@ -201,7 +201,7 @@ graph_builder.add_node(experiments)
 graph_builder.add_node(evaluation_report)
 graph_builder.add_node(checkpoints_folder)
 graph_builder.add_node(eval_report_after_training)
-graph_builder.add_node(compare)
+graph_builder.add_node(compare_node)
 graph_builder.add_node(send_email)
 graph_builder.add_node(comparison_report)
 
@@ -228,9 +228,9 @@ graph_builder.add_edge(training_project, versioning)
 graph_builder.add_edge(experiments, evaluation_report, end_socket="left", path="grid")
 graph_builder.add_edge(versioning, checkpoints_folder, end_socket="left", path="grid")
 graph_builder.add_edge(versioning, eval_report_after_training, end_socket="left", path="grid")
-graph_builder.add_edge(experiments, compare)
-graph_builder.add_edge(compare, send_email, end_socket="left", path="grid")
-graph_builder.add_edge(compare, comparison_report, end_socket="left", path="grid")
+graph_builder.add_edge(experiments, compare_node)
+graph_builder.add_edge(compare_node, send_email, end_socket="left", path="grid")
+graph_builder.add_edge(compare_node, comparison_report, end_socket="left", path="grid")
 
 # * Build the layout
 layout = graph_builder.build()

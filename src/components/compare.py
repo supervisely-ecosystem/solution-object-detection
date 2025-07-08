@@ -52,6 +52,13 @@ class CompareNode(SolutionElement):
             else:
                 sly.logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
 
+        @property
+        def is_scheduled(self) -> bool:
+            """
+            Check if the automation job is scheduled.
+            """
+            return self.scheduler.is_job_scheduled(self.job_id)
+
     def __init__(
         self,
         api: sly.Api,
@@ -77,14 +84,14 @@ class CompareNode(SolutionElement):
         self.description = description
         self.width = width
         self.icon = icon or self._get_default_icon()
+        super().__init__(*args, **kwargs)
+
         self.tooltip_position = tooltip_position
         self.eval_dirs = evaluation_dirs
 
         self.result_comparison_dir = None
         self.result_comparison_link = None
         self.result_best_checkpoint = None
-
-        super().__init__(*args, **kwargs)
 
         self.agent_id = agent_id or self.get_available_agent_id()
         if self.agent_id is None:
@@ -93,19 +100,21 @@ class CompareNode(SolutionElement):
         # Automation Modal
 
         periodic_automation = self.ComparisonAutomation(self.send_comparison_request)
-        automation_switch = Switch(self.is_automated)
-        automation_periodic_input = InputNumber(60, min=15, max=3600)
+        automation_switch = Switch(False)
+        self._get_automation_switch_value = lambda: automation_switch.is_switched()
+        automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
+        self._get_automation_interval = lambda: automation_periodic_input.get_value()
         automation_periodic_input.disable()
-        apply_btn = Button(
-            "Apply settings",
-            button_type="primary",
-        )
-        apply_btn.disable()
         interval_field = Field(
             automation_periodic_input,
             "Interval (seconds)",
             "Set the interval for periodic comparison.",
         )
+        apply_btn = Button(
+            "Apply settings",
+            button_type="primary",
+        )
+        apply_btn.disable()
         automation_modal_layout = Container(
             [
                 Field(
@@ -121,16 +130,17 @@ class CompareNode(SolutionElement):
         automation_modal = Dialog("Automation Settings", automation_modal_layout, "tiny")
 
         @automation_switch.value_changed
-        def automation_switch_change_cb(value: bool):
-            self.is_automated = value
-            if value:
+        def automation_switch_change_cb(is_on: bool):
+            if is_on:
                 automation_periodic_input.enable()
                 apply_btn.enable()
             else:
                 automation_periodic_input.disable()
                 apply_btn.disable()
-                periodic_automation.remove()
-                sly.logger.info("Periodic comparison automation disabled.")
+                if periodic_automation.is_scheduled:
+                    periodic_automation.remove()
+                    sly.logger.info("Periodic comparison automation disabled.")
+                self.save()
                 self.hide_automated_badge()
                 self._update_properties()
 
@@ -139,13 +149,14 @@ class CompareNode(SolutionElement):
             sec = automation_periodic_input.get_value()
             periodic_automation.apply(sec)
             sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
+            self.save()
             self._update_properties()
             self.show_automated_badge()
             automation_modal.hide()
 
         # Task History Modal
-        self.task_history = TasksHistory(self.api)
-        task_history_modal = Dialog("Tasks History", self.task_history, "small")
+        self.tasks_history = TasksHistory(self.api)
+        task_history_modal = Dialog("Tasks History", self.tasks_history, "small")
 
         # Comparison History Modal
         self.comparison_history = ComparisonHistory()
@@ -158,20 +169,25 @@ class CompareNode(SolutionElement):
             button_size="mini",
             plain=True,
             button_type="text",
-            call_on_click=automation_modal.show,
         )
+
+        @self._automate_btn.click
+        def show_automation_modal():
+            automation_modal.show()
+
         self._run_btn = Button(
             "Run manually",
             icon="zmdi zmdi-play",
             button_size="mini",
             plain=True,
             button_type="text",
-            call_on_click=lambda: (
-                self._run_btn.disable(),
-                self.send_comparison_request(),
-                self._run_btn.enable(),
-            ),
         )
+
+        @self._run_btn.click
+        def run_comparison():
+            self._run_btn.disable()
+            self.send_comparison_request()
+            self._run_btn.enable()
 
         self._comparison_history_btn = Button(
             "Comparison history (reports)",
@@ -179,16 +195,23 @@ class CompareNode(SolutionElement):
             button_size="mini",
             plain=True,
             button_type="text",
-            call_on_click=comparison_history_modal.show,
         )
+
+        @self._comparison_history_btn.click
+        def show_comparison_history():
+            comparison_history_modal.show()
+
         self._task_history_btn = Button(
             "Tasks history (logs)",
             icon="zmdi zmdi-format-list-bulleted",
             button_size="mini",
             plain=True,
             button_type="text",
-            call_on_click=task_history_modal.show,
         )
+
+        @self._task_history_btn.click
+        def show_task_history():
+            task_history_modal.show()
 
         # self.warning = NotificationBox(
         #     "Not enough evaluation reports",
@@ -216,14 +239,18 @@ class CompareNode(SolutionElement):
         """
         Returns whether the comparison is automated.
         """
-        return DataJson()[self.widget_id].get("is_automated", False)
+        return DataJson()[self.widget_id].get("automation_settings", {}).get("is_automated", False)
 
-    @is_automated.setter
-    def is_automated(self, value: bool):
+    @property
+    def automation_interval(self) -> int:
         """
-        Sets whether the comparison is automated and updates the button state accordingly.
+        Returns the automation interval in seconds.
         """
-        DataJson()[self.widget_id]["is_automated"] = value
+        return (
+            DataJson()[self.widget_id]
+            .get("automation_settings", {})
+            .get("automation_interval", 600)
+        )
 
     @property
     def evaluation_dirs(self) -> list[str]:
@@ -245,6 +272,18 @@ class CompareNode(SolutionElement):
 
         # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
         # self.warning.show() if self.show_warning else self.warning.hide()
+
+    def save(self) -> None:
+        """
+        Saves the current state of the CompareNode.
+        """
+        DataJson()[self.widget_id]["automation_settings"][
+            "is_automated"
+        ] = self._get_automation_switch_value()
+        DataJson()[self.widget_id]["automation_settings"][
+            "automation_interval"
+        ] = self._get_automation_interval()
+        DataJson().send_changes()
 
     def _create_card(self) -> SolutionCard:
         """
@@ -288,7 +327,7 @@ class CompareNode(SolutionElement):
         session_running = len(available_sessions) > 0
         if session_running:
             sly.logger.info("Model Benchmark Evaluator session is already running, skipping start.")
-            self.task_history.add_task(*available_sessions[0])
+            self.tasks_history.add_task(*available_sessions[0])
             return available_sessions[0].task_id
 
         sly.logger.info("Starting Model Benchmark Evaluator task...")
@@ -301,7 +340,7 @@ class CompareNode(SolutionElement):
         )
         if task_info_json is None:
             raise RuntimeError("Failed to start the evaluation task.")
-        self.task_history.add_task(*task_info_json)
+        self.tasks_history.add_task(*task_info_json)
         task_id = task_info_json["taskId"]
 
         current_time = time.time()

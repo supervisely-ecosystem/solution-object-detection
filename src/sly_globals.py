@@ -15,14 +15,15 @@ if sly.is_development():
 
 api = sly.Api.from_env()
 team_id = sly.env.team_id()
+workspace_id = sly.env.workspace_id()
 scheduler = TasksScheduler()
 PROJECT_NAME = "Solution_005"
-project = api.project.get_or_create(69, PROJECT_NAME)
+project = api.project.get_or_create(workspace_id, PROJECT_NAME)
 update_project = False
 custom_data = project.custom_data
 if "labeling_project" not in custom_data:
     labeling_project = api.project.create(
-        69,
+        workspace_id,
         f"{PROJECT_NAME} (labeling)",
         change_name_if_conflict=True,
         description="labeling project",
@@ -34,7 +35,7 @@ else:
 
 if "training_project" not in custom_data:
     training_project = api.project.create(
-        69,
+        workspace_id,
         f"{PROJECT_NAME} (training)",
         change_name_if_conflict=True,
         description="training project",
@@ -72,3 +73,7 @@ else:
 
 if update_project:
     api.project.update_custom_data(project.id, custom_data)
+
+if sly.is_development():
+    sly.logger.setLevel(10)
+    sly.logger.debug("Debug mode is ON")

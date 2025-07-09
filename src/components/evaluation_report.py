@@ -18,7 +18,6 @@ class EvaluationReportNode(SolutionElement):
         y: int = 0,
         icon: Optional[Icons] = None,
         tooltip_position: Literal["left", "right"] = "right",
-        display_overview: bool = True,
         *args,
         **kwargs,
     ):
@@ -32,27 +31,14 @@ class EvaluationReportNode(SolutionElement):
         self.icon = icon
         self.tooltip_position = tooltip_position
 
-        if not benchmark_dir:
-            self._benchmark_dir = None
-            self.url = ""
-            self.markdown_overview = None
-        else:
-            self._benchmark_dir = benchmark_dir or self.get_first_valid_benchmark()
-            if self._benchmark_dir is None:
-                raise ValueError("No valid benchmark directory found in the project.")
-
-            lnk_path = (
-                f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
-            )
-            self.url = self._get_url_from_lnk_path(lnk_path)
-            self.markdown_overview = self._get_overview_markdown() if display_overview else None
+        self.set_benchmark_dir(benchmark_dir)
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
         super().__init__(*args, **kwargs)
 
     def _create_card(self) -> SolutionCard:
         """
-        Creates and returns the SolutionCard for the Manual Import widget.
+        Creates and returns the SolutionCard.
         """
         return SolutionCard(
             title=self.title,
@@ -70,14 +56,23 @@ class EvaluationReportNode(SolutionElement):
         """
         return self._benchmark_dir
 
-    @benchmark_dir.setter
-    def benchmark_dir(self, value: str):
+    def set_benchmark_dir(self, benchmark_dir: str):
         """
         Sets the benchmark directory for the evaluation report.
         """
-        if not value:
-            raise ValueError("Benchmark directory cannot be empty.")
-        self._benchmark_dir = value
+        if not benchmark_dir:
+            self._benchmark_dir = None
+            self.url = ""
+            self.markdown_overview = None
+            if getattr(self, "card", None) is not None:
+                self.card.link = ""
+            return
+        self._benchmark_dir = benchmark_dir
+        lnk_path = f"{self._benchmark_dir.rstrip("/")}/visualizations/Model Evaluation Report.lnk"
+        self.url = self._get_url_from_lnk_path(lnk_path)
+        self.markdown_overview = self._get_overview_markdown()
+        if getattr(self, "card", None) is not None:
+            self.card.link = self.url
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         """
@@ -89,6 +84,9 @@ class EvaluationReportNode(SolutionElement):
         )
 
     def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
+        if not remote_lnk_path:
+            sly.logger.warning("Remote link path is empty.")
+            return ""
         if not self.api.file.exists(self.team_id, remote_lnk_path):
             sly.logger.warning(
                 f"Link file {remote_lnk_path} does not exist in the benchmark directory."
@@ -120,29 +118,33 @@ class EvaluationReportNode(SolutionElement):
 
     #     return None
 
-    def get_first_valid_benchmark(self) -> str:
-        """
-        Returns the first valid benchmark directory for the project.
-        """
-        benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
-        benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
-        if not benchmarks:
-            sly.logger.warning("Project has no benchmark data.")
-            return None
+    # def get_first_valid_benchmark(self) -> str:
+    #     """
+    #     Returns the first valid benchmark directory for the project.
+    #     """
+    #     benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
+    #     benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
+    #     if not benchmarks:
+    #         sly.logger.warning("Project has no benchmark data.")
+    #         return None
 
-        for benchmark in benchmarks:
-            template_path = f"{benchmark}/template.vue"
-            if self.api.file.exists(self.team_id, template_path):
-                return benchmark
+    #     for benchmark in benchmarks:
+    #         template_path = f"{benchmark}/template.vue"
+    #         if self.api.file.exists(self.team_id, template_path):
+    #             return benchmark
 
-        sly.logger.warning("No valid benchmark found in the project.")
-        return None
+    #     sly.logger.warning("No valid benchmark found in the project.")
+    #     return None
 
     def _get_overview_markdown(self) -> str:
         """
         Returns the overview markdown for the evaluation report.
         """
         from tempfile import TemporaryDirectory
+
+        if not self.benchmark_dir:
+            sly.logger.warning("Benchmark directory is not set.")
+            return None
 
         vis_data_dir = "{}visualizations/data/".format(self.benchmark_dir)
         for filepath in self.api.file.listdir(self.team_id, vis_data_dir):

@@ -141,7 +141,7 @@ class ComparisonHistory(Widget):
         return self._comparison_table
 
     def get_json_data(self):
-        return {"comparisons": []}
+        return {"comparisons": self.get_comparison_items()}
 
     def get_json_state(self):
         return {}

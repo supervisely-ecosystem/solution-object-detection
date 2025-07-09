@@ -141,7 +141,7 @@ class NotificationHistory(Widget):
         return self._notification_table
 
     def get_json_data(self):
-        return {"notifications": self.get_notifications()}
+        return {"notifications": []}
 
     def get_json_state(self):
         return {}

@@ -68,7 +68,7 @@ class EvaluationReportNode(SolutionElement):
                 self.card.link = ""
             return
         self._benchmark_dir = benchmark_dir
-        lnk_path = f"{self._benchmark_dir.rstrip("/")}/visualizations/Model Evaluation Report.lnk"
+        lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
         if getattr(self, "card", None) is not None:

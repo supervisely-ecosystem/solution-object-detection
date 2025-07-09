@@ -44,102 +44,13 @@ class SendEmailNode(SolutionElement):
         self.description = description
         self.width = width
         self.icon = icon or self._get_default_icon()
+        self.tooltip_position = tooltip_position
         super().__init__(*args, **kwargs)
 
-        self.email_username = credentials.username
-
-        self.tooltip_position = tooltip_position
-
+        self.credentials = credentials
         self.task_scheduler = TasksScheduler()
 
-        # * Card buttons for modals
-
-        self._settings_btn = Button(
-            "Notifications Settings",
-            icon="zmdi zmdi-settings",
-            plain=True,
-            button_type="text",
-            button_size="mini",
-        )
-        self._automate_btn = Button(
-            "Automate",
-            icon="zmdi zmdi-settings",
-            button_size="mini",
-            plain=True,
-            button_type="text",
-        )
-        self._history_btn = Button(
-            "Notification History",
-            icon="zmdi zmdi-format-subject",
-            plain=True,
-            button_type="text",
-            button_size="mini",
-        )
-
-        # * Notification settings modal
-
-        send_email = SendEmail()
-        self.settings_modal = Dialog("Notification Settings", send_email, size="tiny")
-
-        def send_email_fn():
-            self.hide_failed_badge()
-            self.hide_running_badge()
-            self.show_running_badge()
-            notification_origin = "Daily" if self.use_daily else "Comparison"
-            notification = Notification(self.target_addresses, notification_origin).to_json()
-            n_idx = self.notification_history.add_notification(notification)
-            try:
-                send_email.send_email(credentials)
-                self.show_finished_badge()
-                self.hide_running_badge()
-                self.notification_history.update_notification_status(
-                    n_idx, Notification.Status.SENT
-                )
-            except:
-                self.show_failed_badge()
-                self.hide_running_badge()
-                self.notification_history.update_notification_status(
-                    n_idx, Notification.Status.FAILED
-                )
-
-        self.run_fn = send_email_fn
-
-        @self._settings_btn.click
-        def settings_click_cb():
-            self.settings_modal.show()
-
-        _get_email_widget_values = lambda: {
-            "subject": send_email.get_subject(),
-            "body": send_email.get_body(),
-            "target_addresses": send_email.get_target_addresses(),
-        }
-        setattr(self, "_get_email_widget_values", _get_email_widget_values)
-
-        @send_email.apply_button.click
-        def apply_settings_cb():
-            self.save()
-            self.settings_modal.hide()
-
-        # * History modal
-
-        self.notification_history = NotificationHistory()
-        self.history_modal = Dialog(title="Notification History", content=self.notification_history)
-
-        self._debug_add_dummy_notification()  # For debugging purposes
-
-        @self._history_btn.click
-        def history_click_cb():
-            self.history_modal.show()
-
-        # * Automation modal
-
-        self.automation_modal = self._init_automation_modal()
-
-        @self._automate_btn.click
-        def automation_click_cb():
-            self.automation_modal.show()
-
-        # * Card initialization
+        self._debug_add_dummy_notification()  # For debugging purposes, delete in production
 
         self.card = self._create_card()
         self._update_properties()
@@ -155,6 +66,88 @@ class SendEmailNode(SolutionElement):
         )
         self.notification_history.add_notification(dummy_notification.to_json())
         self.notification_history.update_notification_status(0, Notification.Status.SENT)
+
+    @property
+    def settings_modal(self) -> Dialog:
+        """
+        Returns the settings modal for email notifications.
+        """
+        if not hasattr(self, "_settings_modal"):
+            self._settings_modal = self._init_settings_modal()
+        return self._settings_modal
+
+    @property
+    def automation_modal(self) -> Dialog:
+        """
+        Returns the automation settings modal.
+        """
+        if not hasattr(self, "_automation_modal"):
+            self._automation_modal = self._init_automation_modal()
+        return self._automation_modal
+
+    @property
+    def history_modal(self) -> Dialog:
+        """
+        Returns the notification history modal.
+        """
+        if not hasattr(self, "_history_modal"):
+            self._history_modal = self._init_history_modal()
+        return self._history_modal
+
+    @property
+    def notification_history(self) -> NotificationHistory:
+        """
+        Returns the notification history instance.
+        """
+        if not hasattr(self, "_notification_history"):
+            self._notification_history = NotificationHistory()
+        return self._notification_history
+
+    def _init_history_modal(self) -> Dialog:
+        history_modal = Dialog(
+            title="Notification History",
+            content=self.notification_history,
+            size="large",
+        )
+        return history_modal
+
+    def _init_settings_modal(self) -> Dialog:
+        send_email = SendEmail()
+        settings_modal = Dialog("Notification Settings", send_email, size="tiny")
+
+        @send_email.apply_button.click
+        def apply_settings_cb():
+            self.save()
+            settings_modal.hide()
+
+        def send_email_fn():
+            self.hide_failed_badge()
+            self.hide_running_badge()
+            self.show_running_badge()
+            notification_origin = "Daily" if self.use_daily else "Comparison"
+            notification = Notification(self.target_addresses, notification_origin).to_json()
+            n_idx = self.notification_history.add_notification(notification)
+            try:
+                send_email.send_email(self.credentials)
+                self.show_finished_badge()
+                self.hide_running_badge()
+                self.notification_history.update_notification_status(
+                    n_idx, Notification.Status.SENT
+                )
+            except:
+                self.show_failed_badge()
+                self.hide_running_badge()
+                self.notification_history.update_notification_status(
+                    n_idx, Notification.Status.FAILED
+                )
+
+        self.run_fn = send_email_fn
+        self._get_email_widget_values = lambda: {
+            "subject": send_email.get_subject(),
+            "body": send_email.get_body(),
+            "target_addresses": send_email.get_target_addresses(),
+        }
+        return settings_modal
 
     def _init_automation_modal(self):
         use_daily_switch = Switch(False)
@@ -184,14 +177,11 @@ class SendEmailNode(SolutionElement):
             size="tiny",
         )
 
-        def get_automation_widget_values():
-            return {
-                "use_daily": use_daily_switch.is_switched(),
-                "daily_time": daily_time_picker.get_value(),
-                "run_after_comparison": after_comparison.is_checked(),
-            }
-
-        setattr(self, "_get_automation_widget_values", get_automation_widget_values)
+        self._get_automation_widget_values = lambda: {
+            "use_daily": use_daily_switch.is_switched(),
+            "daily_time": daily_time_picker.get_value(),
+            "run_after_comparison": after_comparison.is_checked(),
+        }
 
         @apply_button.click
         def apply_automation_settings():
@@ -201,6 +191,40 @@ class SendEmailNode(SolutionElement):
             automation_modal.hide()
 
         return automation_modal
+
+    def _get_buttons(self):
+        if not hasattr(self, "_settings_btn"):
+            self._settings_btn = Button(
+                "Notifications Settings",
+                icon="zmdi zmdi-settings",
+                plain=True,
+                button_type="text",
+                button_size="mini",
+            )
+            self._settings_btn.click(self.settings_modal.show)
+        if not hasattr(self, "_automate_btn"):
+            self._automate_btn = Button(
+                "Automate",
+                icon="zmdi zmdi-settings",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+            self._automate_btn.click(self.automation_modal.show)
+        if not hasattr(self, "_history_btn"):
+            self._history_btn = Button(
+                "Notification History",
+                icon="zmdi zmdi-format-subject",
+                plain=True,
+                button_type="text",
+                button_size="mini",
+            )
+            self._history_btn.click(self.history_modal.show)
+        return [
+            self._settings_btn,
+            self._automate_btn,
+            self._history_btn,
+        ]
 
     @property
     def body(self) -> str:
@@ -288,7 +312,7 @@ class SendEmailNode(SolutionElement):
             },
             {
                 "key": "Email",
-                "value": self.email_username,
+                "value": self.credentials.username,
                 "link": True,
                 "highlight": False,
             },
@@ -336,7 +360,7 @@ class SendEmailNode(SolutionElement):
         """
         return SolutionCard.Tooltip(
             description=self.description,
-            content=[self._settings_btn, self._automate_btn, self._history_btn],
+            content=self._get_buttons(),
             properties=[],
         )
 

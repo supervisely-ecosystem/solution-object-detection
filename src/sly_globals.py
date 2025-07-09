@@ -76,4 +76,3 @@ if update_project:
 
 if sly.is_development():
     sly.logger.setLevel(10)
-    sly.logger.debug("Debug mode is ON")

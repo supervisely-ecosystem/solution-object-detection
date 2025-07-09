@@ -64,14 +64,14 @@ class EvaluationReportNode(SolutionElement):
             self._benchmark_dir = None
             self.url = ""
             self.markdown_overview = None
-            if getattr(self, "card", None) is not None:
+            if hasattr(self, "card"):
                 self.card.link = ""
             return
         self._benchmark_dir = benchmark_dir
         lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
-        if getattr(self, "card", None) is not None:
+        if hasattr(self, "card"):
             self.card.link = self.url
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:

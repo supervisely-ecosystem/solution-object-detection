@@ -23,41 +23,42 @@ from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
 
 
+class ComparisonAutomation(Automation):
+    """
+    Automation for running model comparison evaluations.
+    """
+
+    def __init__(self, func: Callable):
+        super().__init__()
+        self.job_id = f"compare_models_{uuid4()}"
+        self.func = func
+
+    def apply(self, sec: int, *args) -> None:
+        self.scheduler.add_job(
+            self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
+        )
+        sly.logger.info(
+            f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds."
+        )
+
+    def remove(self):
+        if self.scheduler.is_job_scheduled(self.job_id):
+            self.scheduler.remove_job(self.job_id)
+            sly.logger.info(f"Removed scheduled job: {self.job_id}")
+        else:
+            sly.logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
+
+    @property
+    def is_scheduled(self) -> bool:
+        """
+        Check if the automation job is scheduled.
+        """
+        return self.scheduler.is_job_scheduled(self.job_id)
+
+
 class CompareNode(SolutionElement):
     APP_SLUG = "supervisely-ecosystem/model-benchmark"
     COMPARISON_ENDPOINT = "run_comparison"
-
-    class ComparisonAutomation(Automation):
-        """
-        Automation for running model comparison evaluations.
-        """
-
-        def __init__(self, func: Callable):
-            super().__init__()
-            self.job_id = f"compare_models_{uuid4()}"
-            self.func = func
-
-        def apply(self, sec: int, *args) -> None:
-            self.scheduler.add_job(
-                self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
-            )
-            sly.logger.info(
-                f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds."
-            )
-
-        def remove(self):
-            if self.scheduler.is_job_scheduled(self.job_id):
-                self.scheduler.remove_job(self.job_id)
-                sly.logger.info(f"Removed scheduled job: {self.job_id}")
-            else:
-                sly.logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
-
-        @property
-        def is_scheduled(self) -> bool:
-            """
-            Check if the automation job is scheduled.
-            """
-            return self.scheduler.is_job_scheduled(self.job_id)
 
     def __init__(
         self,
@@ -97,140 +98,13 @@ class CompareNode(SolutionElement):
         if self.agent_id is None:
             raise ValueError("No available agent found. Please check your agents.")
 
-        # Automation Modal
-
-        periodic_automation = self.ComparisonAutomation(self.send_comparison_request)
-        automation_switch = Switch(False)
-        self._get_automation_switch_value = lambda: automation_switch.is_switched()
-        automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
-        self._get_automation_interval = lambda: automation_periodic_input.get_value()
-        automation_periodic_input.disable()
-        interval_field = Field(
-            automation_periodic_input,
-            "Interval (seconds)",
-            "Set the interval for periodic comparison.",
-        )
-        apply_btn = Button(
-            "Apply settings",
-            button_type="primary",
-        )
-        apply_btn.disable()
-        automation_modal_layout = Container(
-            [
-                Field(
-                    automation_switch,
-                    "Periodic comparison",
-                    "Configure whether you want to automate the comparison process.",
-                ),
-                interval_field,
-                apply_btn,
-                Field(Container(), "Conditional comparison", "Not implemented yet."),
-            ]
-        )
-        automation_modal = Dialog("Automation Settings", automation_modal_layout, "tiny")
-
-        @automation_switch.value_changed
-        def automation_switch_change_cb(is_on: bool):
-            if is_on:
-                automation_periodic_input.enable()
-                apply_btn.enable()
-            else:
-                automation_periodic_input.disable()
-                apply_btn.disable()
-                if periodic_automation.is_scheduled:
-                    periodic_automation.remove()
-                    sly.logger.info("Periodic comparison automation disabled.")
-                self.save()
-                self.hide_automated_badge()
-                self._update_properties()
-
-        @apply_btn.click
-        def enable_automation():
-            sec = automation_periodic_input.get_value()
-            periodic_automation.apply(sec)
-            sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
-            self.save()
-            self._update_properties()
-            self.show_automated_badge()
-            automation_modal.hide()
-
-        # Task History Modal
-        self.tasks_history = TasksHistory(self.api)
-        task_history_modal = Dialog("Tasks History", self.tasks_history, "small")
-
-        # Comparison History Modal
-        self.comparison_history = ComparisonHistory()
-        comparison_history_modal = Dialog("Comparison History", self.comparison_history, "small")
-
-        # Buttons
-        self._automate_btn = Button(
-            "Automate",
-            icon="zmdi zmdi-settings",
-            button_size="mini",
-            plain=True,
-            button_type="text",
-        )
-
-        @self._automate_btn.click
-        def show_automation_modal():
-            automation_modal.show()
-
-        self._run_btn = Button(
-            "Run manually",
-            icon="zmdi zmdi-play",
-            button_size="mini",
-            plain=True,
-            button_type="text",
-        )
-
-        @self._run_btn.click
-        def run_comparison():
-            self._run_btn.disable()
-            self.send_comparison_request()
-            self._run_btn.enable()
-
-        self._comparison_history_btn = Button(
-            "Comparison history (reports)",
-            icon="zmdi zmdi-format-list-bulleted",
-            button_size="mini",
-            plain=True,
-            button_type="text",
-        )
-
-        @self._comparison_history_btn.click
-        def show_comparison_history():
-            comparison_history_modal.show()
-
-        self._task_history_btn = Button(
-            "Tasks history (logs)",
-            icon="zmdi zmdi-format-list-bulleted",
-            button_size="mini",
-            plain=True,
-            button_type="text",
-        )
-
-        @self._task_history_btn.click
-        def show_task_history():
-            task_history_modal.show()
-
-        # self.warning = NotificationBox(
-        #     "Not enough evaluation reports",
-        #     "Please select at least two evaluation reports to compare.",
-        #     box_type="warning",
-        # )
-        # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
-        # self._run_btn.disable() if self.show_warning else self.warning.hide()
-
-        # self.failed_notification = NotificationBox(
-        #     "Evaluation Failed",
-        #     "Failed to run the evaluation. Please check the logs for more details.",
-        #     box_type="error",
-        # )
-        # self.failed_notification.hide()
-
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        self.modals = [automation_modal]
+        self.modals = [
+            self.automation_modal,
+            self.comparison_history_modal,
+            self.tasks_history_modal,
+        ]
 
         self._finish_callbacks = []
 
@@ -273,6 +147,119 @@ class CompareNode(SolutionElement):
         # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
         # self.warning.show() if self.show_warning else self.warning.hide()
 
+    @property
+    def automation_modal(self) -> Dialog:
+        """
+        Returns the automation modal dialog.
+        """
+        if not hasattr(self, "_automation_modal"):
+            self._automation_modal = self._init_automation_modal()
+        return self._automation_modal
+
+    @property
+    def automation(self) -> ComparisonAutomation:
+        """
+        Returns the automation instance for periodic comparison.
+        """
+        if not hasattr(self, "_automation"):
+            self._automation = ComparisonAutomation(self.send_comparison_request)
+        return self._automation
+
+    @property
+    def comparison_history_modal(self) -> Dialog:
+        """
+        Returns the comparison history modal dialog.
+        """
+        if not hasattr(self, "_comparison_history_modal"):
+            self._comparison_history_modal = Dialog(
+                "Comparison History", self.comparison_history, "small"
+            )
+        return self._comparison_history_modal
+
+    @property
+    def comparison_history(self) -> ComparisonHistory:
+        """
+        Returns the comparison history instance.
+        """
+        if not hasattr(self, "_comparison_history"):
+            self._comparison_history = ComparisonHistory()
+        return self._comparison_history
+
+    @property
+    def tasks_history_modal(self) -> Dialog:
+        """
+        Returns the task history modal dialog.
+        """
+        if not hasattr(self, "_tasks_history_modal"):
+            self._tasks_history_modal = Dialog("Tasks History", self.tasks_history, "small")
+        return self._tasks_history_modal
+
+    @property
+    def tasks_history(self) -> TasksHistory:
+        """
+        Returns the tasks history instance.
+        """
+        if not hasattr(self, "_tasks_history"):
+            self._tasks_history = TasksHistory(self.api)
+        return self._tasks_history
+
+    def _init_automation_modal(self) -> Dialog:
+        automation_switch = Switch(False)
+        self._get_automation_switch_value = automation_switch.is_switched
+        automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
+        self._get_automation_interval = automation_periodic_input.get_value
+        automation_periodic_input.disable()
+        interval_field = Field(
+            automation_periodic_input,
+            "Interval (seconds)",
+            "Set the interval for periodic comparison.",
+        )
+        apply_btn = Button(
+            "Apply settings",
+            button_type="primary",
+        )
+        apply_btn.disable()
+        automation_modal_layout = Container(
+            [
+                Field(
+                    automation_switch,
+                    "Periodic comparison",
+                    "Configure whether you want to automate the comparison process.",
+                ),
+                interval_field,
+                apply_btn,
+                Field(Container(), "Conditional comparison", "Not implemented yet."),
+            ]
+        )
+        automation_modal = Dialog("Automation Settings", automation_modal_layout, "tiny")
+
+        @automation_switch.value_changed
+        def automation_switch_change_cb(is_on: bool):
+            if is_on:
+                automation_periodic_input.enable()
+                apply_btn.enable()
+            else:
+                automation_periodic_input.disable()
+                apply_btn.disable()
+                if self.automation.is_scheduled:
+                    self.automation.remove()
+                    sly.logger.info("Periodic comparison automation disabled.")
+                self.save()
+                self.hide_automated_badge()
+                self._update_properties()
+
+        @apply_btn.click
+        def enable_automation():
+            sec = automation_periodic_input.get_value()
+            self.automation.apply(sec)
+            sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
+            self.save()
+            self._update_properties()
+            self.show_automated_badge()
+            automation_modal.hide()
+
+        return automation_modal
+
     def save(self) -> None:
         """
         Saves the current state of the CompareNode.
@@ -300,12 +287,6 @@ class CompareNode(SolutionElement):
         )
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
-        content = [
-            self._automate_btn,
-            self._run_btn,
-            self._comparison_history_btn,
-            self._task_history_btn,
-        ]
         properties = [
             {
                 "key": "Best model",
@@ -316,8 +297,58 @@ class CompareNode(SolutionElement):
             {"key": "Automatic re-deployment", "value": "✖", "highlight": False, "link": False},
         ]
         return SolutionCard.Tooltip(
-            description=self.description, content=content, properties=properties
+            description=self.description, content=self._get_buttons(), properties=properties
         )
+
+    def _get_buttons(self):
+        if not hasattr(self, "_run_btn"):
+            self._run_btn = Button(
+                "Run manually",
+                icon="zmdi zmdi-play",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+
+            @self._run_btn.click
+            def run_comparison():
+                self._run_btn.disable()
+                self.send_comparison_request()
+                self._run_btn.enable()
+
+        if not hasattr(self, "_automate_btn"):
+            self._automate_btn = Button(
+                "Automate",
+                icon="zmdi zmdi-settings",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+            self._automate_btn.click(self.automation_modal.show)
+        if not hasattr(self, "_comparison_history_btn"):
+            self._comparison_history_btn = Button(
+                "Comparison history (reports)",
+                icon="zmdi zmdi-format-list-bulleted",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+            self._comparison_history_btn.click(self.comparison_history_modal.show)
+        if not hasattr(self, "_tasks_history_btn"):
+            self._tasks_history_btn = Button(
+                "Tasks history (logs)",
+                icon="zmdi zmdi-format-list-bulleted",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+            self._tasks_history_btn.click(self.tasks_history_modal.show)
+        return [
+            self._automate_btn,
+            self._run_btn,
+            self._comparison_history_btn,
+            self._tasks_history_btn,
+        ]
 
     def run_evaluator_session_if_needed(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)

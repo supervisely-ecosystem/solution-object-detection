@@ -51,7 +51,15 @@ class SendEmail(Widget):
         self._default_subject = default_subject
         self._default_body = default_body
 
-        target_addresses_widget = Input(
+        self._content = self._init_ui()
+        super().__init__(widget_id=widget_id, file_path=__file__)
+
+    @property
+    def apply_button(self) -> Button:
+        return self._apply_button
+
+    def _init_ui(self) -> Container:
+        self._target_addresses_input = Input(
             minlength=1,
             maxlength=100,
             placeholder="user1@example.com, user2@example.com",
@@ -60,34 +68,34 @@ class SendEmail(Widget):
         )
         # @TODO: Maybe add icons
         target_addresses_field = Field(
-            target_addresses_widget,
+            self._target_addresses_input,
             "Target email addresses",
             "Enter email addresses to separated by commas",
         )
-        self._target_addresses_input = target_addresses_widget
 
-        subject_widget = Input(
+        self._subject_input = Input(
             "", 0, 300, placeholder="Enter email subject here...", type="textarea"
         )
         subject_input_field = Field(
-            subject_widget, "Email Subject", "Configure the subject of the email notification."
+            self._subject_input, "Email Subject", "Configure the subject of the email notification."
         )
-        self._subject_input = subject_widget
 
-        body_widget = TextArea(placeholder="Enter email body here...", rows=10, autosize=False)
+        self._body_input = TextArea(placeholder="Enter email body here...", rows=10, autosize=False)
         body_input_field = Field(
-            body_widget,
+            self._body_input,
             "Email Body",
             "Configure the body of the email notification.",
         )
-        self._body_input = body_widget
 
-        self.apply_button = Button("Apply")
-
-        self._content = Container(
-            [target_addresses_field, subject_input_field, body_input_field, self.apply_button]
+        self._apply_button = Button("Apply")
+        return Container(
+            [
+                target_addresses_field,
+                subject_input_field,
+                body_input_field,
+                self._apply_button,
+            ]
         )
-        super().__init__(widget_id=widget_id, file_path=__file__)
 
     def get_target_addresses(self):
         """

@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 import supervisely as sly
@@ -554,3 +554,84 @@ class CompareNode(SolutionElement):
         ]
         for prop in new_propetries:
             self.card.update_property(**prop)
+
+
+class ComparisonItem:
+    def __init__(
+        self,
+        task_id: str,
+        input_evals: Union[List[str], str],
+        result_folder: str,
+        best_checkpoint: str,
+        created_at: str = None,
+    ):
+        """
+        Initialize a comparison item with task ID, input evaluations, result folder, best checkpoint, and creation time.
+        """
+        self.task_id = task_id
+        self.input_evals = input_evals if isinstance(input_evals, list) else [input_evals]
+        self.result_folder = result_folder
+        self.best_checkpoint = best_checkpoint
+        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def to_json(self) -> Dict[str, Any]:
+        """Convert the comparison item to a JSON serializable format."""
+        return {
+            "created_at": self.created_at,
+            "task_id": self.task_id,
+            "input_evals": ", ".join(self.input_evals),
+            "result_folder": self.result_folder,
+            "best_checkpoint": self.best_checkpoint,
+        }
+
+
+class ComparisonHistory(TasksHistory):
+    def __init__(
+        self,
+        widget_id: str = None,
+    ):
+        super().__init__(widget_id=widget_id)
+        self._remove_unused_args()
+        self._table_columns = [
+            "ID" "Created At",
+            "Task ID",
+            "Input Evaluations",
+            "Result Folder",
+            "Best checkpoint",
+        ]
+        self._columns_keys = [
+            ["id"],
+            ["created_at"],
+            ["task_id"],
+            ["input_evals"],
+            ["result_folder"],
+            ["best_checkpoint"],
+        ]
+
+    def update(self):
+        self.table.clear()
+        for comparison in self.get_tasks():
+            self.table.insert_row(list(comparison.values()))
+
+    def add_task(self, task: Union[ComparisonItem, Dict[str, Any]]) -> int:
+        if isinstance(task, ComparisonItem):
+            task = task.to_json()
+        super().add_task(task)
+        self.update()
+
+    def _remove_unused_args(self):
+        """
+        Removes unused arguments from the class to avoid confusion.
+        """
+        unused_args = [
+            "api",
+            "_stop_autorefresh",
+            "_refresh_thread",
+            "_refresh_interval",
+            "_autorefresh",
+            "stop_autorefresh",
+            "start_autorefresh",
+        ]
+        for arg in unused_args:
+            if hasattr(self, arg):
+                delattr(self, arg)

@@ -1,12 +1,9 @@
-from typing import List, Literal, Optional, Union
+import datetime
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from apscheduler.triggers.cron import CronTrigger
 
 import supervisely as sly
-from src.components.notification_history.notification_history import (
-    Notification,
-    NotificationHistory,
-)
 from src.components.send_email.send_email import SendEmail
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
@@ -20,6 +17,7 @@ from supervisely.app.widgets import (
     TimePicker,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
+from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 from supervisely.solution.scheduler import TasksScheduler
 
@@ -438,3 +436,103 @@ class SendEmailNode(SolutionElement):
         bg_color_hex = "#{:02X}{:02X}{:02X}".format(*[int(c * 255) for c in bg_color_rgb])
 
         return icon_color_hex, bg_color_hex
+
+
+class Notification:
+    class Status:
+        SENT = "Sent ✅"
+        FAILED = "Failed ❌"
+        PENDING = "Pending ⏳"
+
+    def __init__(
+        self,
+        sent_to: Union[List, str],
+        origin: str,
+        status: str = None,
+        created_at: str = None,
+    ):
+        """
+        Initialize a notification with the recipient, origin, status, and creation time.
+        """
+        self.sent_to = sent_to
+        self.origin = origin
+        self.status = status or self.Status.PENDING
+        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def to_json(self) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
+        """
+        Convert the notification history to a JSON serializable format.
+        """
+        return {
+            "created_at": self.created_at,
+            "sent_to": ", ".join(self.sent_to) if isinstance(self.sent_to, list) else self.sent_to,
+            "origin": self.origin,
+            "status": self.status,
+        }
+
+
+class NotificationHistory(TasksHistory):
+    def __init__(
+        self,
+        widget_id: str = None,
+    ):
+        super().__init__(widget_id=widget_id)
+        self._remove_unused_args()
+        self._table_columns = [
+            "Created At",
+            "Sent To",
+            "Origin",
+            "Status",
+        ]
+        self._columns_keys = [
+            ["created_at"],
+            ["sent_to"],
+            ["origin"],
+            ["status"],
+        ]
+
+    def update(self):
+        self.table.clear()
+        for task in self.get_tasks():
+            self.table.insert_row(list(task.values()))
+
+    def add_task(self, task: Union[Notification, Dict[str, Any]]):
+        if isinstance(task, Notification):
+            task = task.to_json()
+        super().add_task(task)
+        self.update()
+
+    def update_task(self, time: datetime.datetime, task: Union[Notification, Dict[str, Any]]):
+        if isinstance(task, Notification):
+            task = task.to_json()
+        tasks = self.get_tasks()
+        for task in tasks:
+            if task["created_at"] == time:
+                task.update(task)
+                DataJson()[self.widget_id]["tasks"] = tasks
+                DataJson().send_changes()
+                return
+        raise KeyError(f"Task with created_at {time} not found in the notification history.")
+
+    @property
+    def table(self):
+        if not hasattr(self, "_notification_table"):
+            self._notification_table = self._create_notification_history_table()
+        return self._notification_table
+
+    def _remove_unused_args(self):
+        """
+        Removes unused arguments from the class to avoid confusion.
+        """
+        unused_args = [
+            "api",
+            "_stop_autorefresh",
+            "_refresh_thread",
+            "_refresh_interval",
+            "_autorefresh",
+            "stop_autorefresh",
+            "start_autorefresh",
+        ]
+        for arg in unused_args:
+            if hasattr(self, arg):
+                delattr(self, arg)

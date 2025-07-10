@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from apscheduler.triggers.cron import CronTrigger
 
-import supervisely as sly
 from src.components.send_email.send_email import SendEmail
+from supervisely.sly_logger import logger
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
@@ -17,9 +17,94 @@ from supervisely.app.widgets import (
     TimePicker,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
-from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
+from supervisely.solution.components.tasks_history import TasksHistory
 from supervisely.solution.scheduler import TasksScheduler
+
+
+class SendEmailHistory(TasksHistory):
+
+    class Item:
+        class Status:
+            SENT = "Sent"
+            FAILED = "Failed"
+            PENDING = "Pending"
+
+        def __init__(
+            self,
+            sent_to: Union[List, str],
+            origin: str,
+            status: str = None,
+            created_at: str = None,
+        ):
+            """
+            Initialize a notification with the recipient, origin, status, and creation time.
+            """
+            self.sent_to = sent_to
+            self.origin = origin
+            self.status = status or self.Status.PENDING
+            self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        def to_json(self) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
+            """
+            Convert the notification history to a JSON serializable format.
+            """
+            return {
+                "created_at": self.created_at,
+                "sent_to": (
+                    ", ".join(self.sent_to) if isinstance(self.sent_to, list) else self.sent_to
+                ),
+                "origin": self.origin,
+                "status": self.status,
+            }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._table_columns = [
+            "Created At",
+            "Sent To",
+            "Origin",
+            "Status",
+        ]
+        self._columns_keys = [
+            ["created_at"],
+            ["sent_to"],
+            ["origin"],
+            ["status"],
+        ]
+
+    def update(self):
+        self.table.clear()
+        for task in self.get_tasks():
+            self.table.insert_row(list(task.values()))
+
+    def add_task(self, task: Union["SendEmailHistory.Item", Dict[str, Any]]):
+        if isinstance(task, SendEmailHistory.Item):
+            task = task.to_json()
+        super().add_task(task)
+        self.update()
+
+    def update_task(
+        self,
+        time: datetime.datetime,
+        task: Union["SendEmailHistory.Item", Dict[str, Any]],
+    ):
+        if isinstance(task, SendEmailHistory.Item):
+            task = task.to_json()
+        tasks = self.get_tasks()
+        for task in tasks:
+            if task["created_at"] == time:
+                task.update(task)
+                DataJson()[self.widget_id]["tasks"] = tasks
+                DataJson().send_changes()
+                return
+        raise KeyError(f"Task with created_at {time} not found in the notification history.")
+
+    @property
+    def table(self):
+        if not hasattr(self, "_notification_table"):
+            self._notification_table = self._create_tasks_history_table()
+        return self._notification_table
 
 
 class SendEmailNode(SolutionElement):
@@ -51,19 +136,18 @@ class SendEmailNode(SolutionElement):
         self._debug_add_dummy_notification()  # For debugging purposes, delete in production
 
         self.card = self._create_card()
-        self._update_properties()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
+        self._update_properties()
         self.modals = [self.settings_modal, self.automation_modal, self.history_modal]
 
     def _debug_add_dummy_notification(self):
         """
         Adds a dummy notification to the history for debugging purposes.
         """
-        dummy_notification = Notification(
-            ["someuser123@example.com", "dummy228@yahoo.com"], "Debug"
+        dummy_notification = SendEmailHistory.Item(
+            ["someuser123@example.com", "dummy228@yahoo.com"], SendEmailHistory.Item.Status.SENT
         )
-        self.notification_history.add_notification(dummy_notification.to_json())
-        self.notification_history.update_notification_status(0, Notification.Status.SENT)
+        self.notification_history.add_task(dummy_notification.to_json())
 
     @property
     def settings_modal(self) -> Dialog:
@@ -93,12 +177,12 @@ class SendEmailNode(SolutionElement):
         return self._history_modal
 
     @property
-    def notification_history(self) -> NotificationHistory:
+    def notification_history(self) -> SendEmailHistory:
         """
         Returns the notification history instance.
         """
         if not hasattr(self, "_notification_history"):
-            self._notification_history = NotificationHistory()
+            self._notification_history = SendEmailHistory()
         return self._notification_history
 
     def _init_history_modal(self) -> Dialog:
@@ -120,23 +204,23 @@ class SendEmailNode(SolutionElement):
 
         def send_email_fn():
             self.hide_failed_badge()
-            self.hide_running_badge()
-            self.show_running_badge()
             notification_origin = "Daily" if self.use_daily else "Comparison"
-            notification = Notification(self.target_addresses, notification_origin).to_json()
+            notification = SendEmailHistory.Item(
+                self.target_addresses, notification_origin
+            ).to_json()
             n_idx = self.notification_history.add_notification(notification)
             try:
                 send_email.send_email(self.credentials)
                 self.show_finished_badge()
                 self.hide_running_badge()
                 self.notification_history.update_notification_status(
-                    n_idx, Notification.Status.SENT
+                    n_idx, SendEmailHistory.Item.Status.SENT
                 )
             except:
                 self.show_failed_badge()
                 self.hide_running_badge()
                 self.notification_history.update_notification_status(
-                    n_idx, Notification.Status.FAILED
+                    n_idx, SendEmailHistory.Item.Status.FAILED
                 )
 
         self.run_fn = send_email_fn
@@ -283,16 +367,16 @@ class SendEmailNode(SolutionElement):
         use_after_comparison = self.run_after_comparison
         if use_daily and use_after_comparison:
             send_value = "every day / after comparison"
-            self.show_automated_badge()
+            self.node.show_automation_badge()
         elif use_daily and not use_after_comparison:
             send_value = "every day"
-            self.show_automated_badge()
+            self.node.show_automation_badge()
         elif use_after_comparison and not use_daily:
             send_value = "after comparison"
-            self.show_automated_badge()
+            self.node.show_automation_badge()
         else:
             send_value = "never"
-            self.hide_automated_badge()
+            self.node.hide_automation_badge()
         new_propetries = [
             {
                 "key": "Send",
@@ -303,7 +387,7 @@ class SendEmailNode(SolutionElement):
             {
                 "key": "Total",
                 "value": "{} notifications".format(
-                    len(self.notification_history.get_notifications())
+                    len(self.notification_history.get_tasks())
                 ),
                 "link": False,
                 "highlight": False,
@@ -323,7 +407,7 @@ class SendEmailNode(SolutionElement):
         if not use_daily:
             if self.task_scheduler.is_job_scheduled(self.JOB_ID):
                 self.task_scheduler.remove_job(self.JOB_ID)
-                sly.logger.info("[SCHEDULER]: Daily email job is disabled.")
+                logger.info("[SCHEDULER]: Daily email job is disabled.")
             return
 
         time = self.daily_time
@@ -336,7 +420,7 @@ class SendEmailNode(SolutionElement):
             replace_existing=True,
         )
         self.task_scheduler.jobs[job.id] = job
-        sly.logger.info(
+        logger.info(
             f"[SCHEDULER]: Job '{job.id}' scheduled to send emails at {time} every day."
         )
 
@@ -362,177 +446,12 @@ class SendEmailNode(SolutionElement):
             properties=[],
         )
 
-    def show_finished_badge(self):
-        """
-        Updates the card to show that the evaluation is finished.
-        """
-        self.card.update_badge_by_key(key="Finished", label="✅", plain=True, badge_type="success")
-
-    def hide_finished_badge(self):
-        """
-        Hides the finished badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Finished")
-
-    def show_running_badge(self):
-        """
-        Updates the card to show that the evaluation is running.
-        """
-        self.card.update_badge_by_key(key="Sending", label="⚡", plain=True, badge_type="warning")
-
-    def hide_running_badge(self):
-        """
-        Hides the running badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Sending")
-
-    def show_failed_badge(self):
-        """
-        Updates the card to show that the evaluation has failed.
-        """
-        self.card.update_badge_by_key(key="Failed", label="❌", plain=True, badge_type="error")
-        # self.error_nofitication.show()
-
-    def hide_failed_badge(self):
-        """
-        Hides the failed badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Failed")
-        # self.error_nofitication.hide()
-
-    def show_automated_badge(self):
-        """
-        Updates the card to show that the comparison is automated.
-        """
-        self.card.update_badge_by_key(key="Automated", label="🤖", plain=True, badge_type="success")
-
-    def hide_automated_badge(self):
-        """
-        Hides the automated badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Automated")
-
     def _get_default_icon(self) -> Icons:
         """
         Returns a default icon for the SendEmailNode.
         """
-        color, bg_color = self._random_pretty_color()
-        return Icons(class_name="zmdi zmdi-email", color=color, bg_color=bg_color)
-
-    def _random_pretty_color(self) -> str:
-        import colorsys
-        import random
-
-        icon_color_hsv = (random.random(), random.uniform(0.6, 0.9), random.uniform(0.4, 0.7))
-        icon_color_rgb = colorsys.hsv_to_rgb(*icon_color_hsv)
-        icon_color_hex = "#{:02X}{:02X}{:02X}".format(*[int(c * 255) for c in icon_color_rgb])
-
-        bg_color_hsv = (
-            icon_color_hsv[0],
-            icon_color_hsv[1] * 0.3,
-            min(icon_color_hsv[2] + 0.4, 1.0),
+        return Icons(
+            class_name="zmdi zmdi-email",
+            color="#1976D2",
+            bg_color="#E3F2FD",
         )
-        bg_color_rgb = colorsys.hsv_to_rgb(*bg_color_hsv)
-        bg_color_hex = "#{:02X}{:02X}{:02X}".format(*[int(c * 255) for c in bg_color_rgb])
-
-        return icon_color_hex, bg_color_hex
-
-
-class Notification:
-    class Status:
-        SENT = "Sent ✅"
-        FAILED = "Failed ❌"
-        PENDING = "Pending ⏳"
-
-    def __init__(
-        self,
-        sent_to: Union[List, str],
-        origin: str,
-        status: str = None,
-        created_at: str = None,
-    ):
-        """
-        Initialize a notification with the recipient, origin, status, and creation time.
-        """
-        self.sent_to = sent_to
-        self.origin = origin
-        self.status = status or self.Status.PENDING
-        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    def to_json(self) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
-        """
-        Convert the notification history to a JSON serializable format.
-        """
-        return {
-            "created_at": self.created_at,
-            "sent_to": ", ".join(self.sent_to) if isinstance(self.sent_to, list) else self.sent_to,
-            "origin": self.origin,
-            "status": self.status,
-        }
-
-
-class NotificationHistory(TasksHistory):
-    def __init__(
-        self,
-        widget_id: str = None,
-    ):
-        super().__init__(widget_id=widget_id)
-        self._remove_unused_args()
-        self._table_columns = [
-            "Created At",
-            "Sent To",
-            "Origin",
-            "Status",
-        ]
-        self._columns_keys = [
-            ["created_at"],
-            ["sent_to"],
-            ["origin"],
-            ["status"],
-        ]
-
-    def update(self):
-        self.table.clear()
-        for task in self.get_tasks():
-            self.table.insert_row(list(task.values()))
-
-    def add_task(self, task: Union[Notification, Dict[str, Any]]):
-        if isinstance(task, Notification):
-            task = task.to_json()
-        super().add_task(task)
-        self.update()
-
-    def update_task(self, time: datetime.datetime, task: Union[Notification, Dict[str, Any]]):
-        if isinstance(task, Notification):
-            task = task.to_json()
-        tasks = self.get_tasks()
-        for task in tasks:
-            if task["created_at"] == time:
-                task.update(task)
-                DataJson()[self.widget_id]["tasks"] = tasks
-                DataJson().send_changes()
-                return
-        raise KeyError(f"Task with created_at {time} not found in the notification history.")
-
-    @property
-    def table(self):
-        if not hasattr(self, "_notification_table"):
-            self._notification_table = self._create_notification_history_table()
-        return self._notification_table
-
-    def _remove_unused_args(self):
-        """
-        Removes unused arguments from the class to avoid confusion.
-        """
-        unused_args = [
-            "api",
-            "_stop_autorefresh",
-            "_refresh_thread",
-            "_refresh_interval",
-            "_autorefresh",
-            "stop_autorefresh",
-            "start_autorefresh",
-        ]
-        for arg in unused_args:
-            if hasattr(self, arg):
-                delattr(self, arg)

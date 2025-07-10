@@ -1,12 +1,9 @@
+import datetime
 import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 import supervisely as sly
-from src.components.comparison_history.comparison_history import (
-    ComparisonHistory,
-    ComparisonItem,
-)
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
@@ -14,13 +11,76 @@ from supervisely.app.widgets import (
     Field,
     Icons,
     InputNumber,
-    NotificationBox,
     SolutionCard,
     Switch,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
 from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
+
+
+class ComparisonHistory(TasksHistory):
+    class Item:
+        def __init__(
+            self,
+            task_id: str,
+            input_evals: Union[List[str], str],
+            result_folder: str,
+            best_checkpoint: str,
+            created_at: str = None,
+        ):
+            """
+            Initialize a comparison item with task ID, input evaluations, result folder, best checkpoint, and creation time.
+            """
+            self.task_id = task_id
+            self.input_evals = input_evals if isinstance(input_evals, list) else [input_evals]
+            self.result_folder = result_folder
+            self.best_checkpoint = best_checkpoint
+            self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        def to_json(self) -> Dict[str, Any]:
+            """Convert the comparison item to a JSON serializable format."""
+            return {
+                "created_at": self.created_at,
+                "task_id": self.task_id,
+                "input_evals": ", ".join(self.input_evals),
+                "result_folder": self.result_folder,
+                "best_checkpoint": self.best_checkpoint,
+            }
+
+    def __init__(
+        self,
+        widget_id: str = None,
+    ):
+        super().__init__(widget_id=widget_id)
+        self._table_columns = [
+            "ID",
+            "Created At",
+            "Task ID",
+            "Input Evaluations",
+            "Result Folder",
+            "Best checkpoint",
+        ]
+        self._columns_keys = [
+            ["id"],
+            ["created_at"],
+            ["task_id"],
+            ["input_evals"],
+            ["result_folder"],
+            ["best_checkpoint"],
+        ]
+
+    def update(self):
+        self.table.clear()
+        for comparison in self.get_tasks():
+            self.table.insert_row(list(comparison.values()))
+
+    def add_task(self, task: Union["ComparisonHistory.Item", Dict[str, Any]]) -> int:
+        if isinstance(task, ComparisonHistory.Item):
+            task = task.to_json()
+        super().add_task(task)
+        self.update()
+
 
 
 class ComparisonAutomation(Automation):
@@ -144,9 +204,6 @@ class CompareNode(SolutionElement):
         else:
             self._run_btn.disable()
 
-        # self.show_warning = self.eval_dirs is None or len(self.eval_dirs) < 2
-        # self.warning.show() if self.show_warning else self.warning.hide()
-
     @property
     def automation_modal(self) -> Dialog:
         """
@@ -245,7 +302,7 @@ class CompareNode(SolutionElement):
                     self.automation.remove()
                     sly.logger.info("Periodic comparison automation disabled.")
                 self.save()
-                self.hide_automated_badge()
+                self.node.hide_automation_badge()
                 self._update_properties()
 
         @apply_btn.click
@@ -255,7 +312,7 @@ class CompareNode(SolutionElement):
             sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
             self.save()
             self._update_properties()
-            self.show_automated_badge()
+            self.node.show_automation_badge()
             automation_modal.hide()
 
         return automation_modal
@@ -352,14 +409,14 @@ class CompareNode(SolutionElement):
 
     def run_evaluator_session_if_needed(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
-        available_sessions = self.api.app.get_sessions(
-            self.team_id, module_id, statuses=[self.api.task.Status.STARTED]
-        )
-        session_running = len(available_sessions) > 0
-        if session_running:
-            sly.logger.info("Model Benchmark Evaluator session is already running, skipping start.")
-            self.tasks_history.add_task(*available_sessions[0])
-            return available_sessions[0].task_id
+        # available_sessions = self.api.app.get_sessions(
+        #     self.team_id, module_id, statuses=[self.api.task.Status.STARTED]
+        # )
+        # session_running = len(available_sessions) > 0
+        # if session_running:
+        #     sly.logger.info("Model Benchmark Evaluator session is already running, skipping start.")
+        #     self.tasks_history.add_task(*available_sessions[0])
+        #     return available_sessions[0].task_id
 
         sly.logger.info("Starting Model Benchmark Evaluator task...")
         task_info_json = self.api.task.start(
@@ -403,6 +460,11 @@ class CompareNode(SolutionElement):
         try:
             # raise RuntimeError("This is a test error to check error handling.")
             task_id = self.run_evaluator_session_if_needed()
+            ready = self.api.app.wait_until_ready_for_api_calls(task_id)
+            if not ready:
+                sly.logger.error("Evaluator session is not ready for API calls.")
+                self.show_failed_badge()
+                return
             request_data = {"eval_dirs": self.eval_dirs}
             response = self.api.task.send_request(
                 task_id, self.COMPARISON_ENDPOINT, data=request_data
@@ -416,7 +478,7 @@ class CompareNode(SolutionElement):
             )
             # @ todo: find the best checkpoint from the evaluation results
             # self._update_properties()
-            comparison = ComparisonItem(
+            comparison = ComparisonHistory.Item(
                 task_id, self.eval_dirs, self.result_comparison_dir, self.result_best_checkpoint
             )
             self.comparison_history.add_comparison(comparison)
@@ -471,71 +533,12 @@ class CompareNode(SolutionElement):
         self.card.remove_badge_by_key(key="In Progress")
         self._run_btn.enable()
 
-    def show_finished_badge(self):
-        """
-        Updates the card to show that the comparison is finished.
-        """
-        self.card.update_badge_by_key(key="Finished", label="✅", plain=True, badge_type="success")
-        self._run_btn.disable()
-
-    def hide_finished_badge(self):
-        """
-        Hides the finished badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Finished")
-        self._run_btn.enable()
-
-    def show_failed_badge(self):
-        """
-        Updates the card to show that the comparison has failed.
-        """
-        self.card.update_badge_by_key(key="Failed", label="❌", plain=True, badge_type="error")
-        # self.failed_notification.show()
-
-    def hide_failed_badge(self):
-        """
-        Hides the failed badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Failed")
-        # self.failed_notification.hide()
-
-    def show_automated_badge(self):
-        """
-        Updates the card to show that the comparison is automated.
-        """
-        self.card.update_badge_by_key(key="Automated", label="🤖", plain=True, badge_type="success")
-
-    def hide_automated_badge(self):
-        """
-        Hides the automated badge from the card.
-        """
-        self.card.remove_badge_by_key(key="Automated")
-
     def _get_default_icon(self) -> Icons:
-        icon_color, bg_color = self._random_pretty_color()
         return Icons(
             class_name="zmdi zmdi-compare",
-            color=icon_color,
-            bg_color=bg_color,
+            color="#1976D2",
+            bg_color="#E3F2FD",
         )
-
-    def _random_pretty_color(self) -> str:
-        import colorsys
-        import random
-
-        icon_color_hsv = (random.random(), random.uniform(0.6, 0.9), random.uniform(0.4, 0.7))
-        icon_color_rgb = colorsys.hsv_to_rgb(*icon_color_hsv)
-        icon_color_hex = "#{:02X}{:02X}{:02X}".format(*[int(c * 255) for c in icon_color_rgb])
-
-        bg_color_hsv = (
-            icon_color_hsv[0],
-            icon_color_hsv[1] * 0.3,
-            min(icon_color_hsv[2] + 0.4, 1.0),
-        )
-        bg_color_rgb = colorsys.hsv_to_rgb(*bg_color_hsv)
-        bg_color_hex = "#{:02X}{:02X}{:02X}".format(*[int(c * 255) for c in bg_color_rgb])
-
-        return icon_color_hex, bg_color_hex
 
     def _update_properties(self):
         new_propetries = [
@@ -546,7 +549,7 @@ class CompareNode(SolutionElement):
                 "link": False,
             },
             {
-                "key": "Automatic re-deployment",
+                "key": "Re-deploy Best model automatically",
                 "value": "✔️" if self.is_automated else "✖",
                 "highlight": False,
                 "link": False,
@@ -554,84 +557,3 @@ class CompareNode(SolutionElement):
         ]
         for prop in new_propetries:
             self.card.update_property(**prop)
-
-
-class ComparisonItem:
-    def __init__(
-        self,
-        task_id: str,
-        input_evals: Union[List[str], str],
-        result_folder: str,
-        best_checkpoint: str,
-        created_at: str = None,
-    ):
-        """
-        Initialize a comparison item with task ID, input evaluations, result folder, best checkpoint, and creation time.
-        """
-        self.task_id = task_id
-        self.input_evals = input_evals if isinstance(input_evals, list) else [input_evals]
-        self.result_folder = result_folder
-        self.best_checkpoint = best_checkpoint
-        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    def to_json(self) -> Dict[str, Any]:
-        """Convert the comparison item to a JSON serializable format."""
-        return {
-            "created_at": self.created_at,
-            "task_id": self.task_id,
-            "input_evals": ", ".join(self.input_evals),
-            "result_folder": self.result_folder,
-            "best_checkpoint": self.best_checkpoint,
-        }
-
-
-class ComparisonHistory(TasksHistory):
-    def __init__(
-        self,
-        widget_id: str = None,
-    ):
-        super().__init__(widget_id=widget_id)
-        self._remove_unused_args()
-        self._table_columns = [
-            "ID" "Created At",
-            "Task ID",
-            "Input Evaluations",
-            "Result Folder",
-            "Best checkpoint",
-        ]
-        self._columns_keys = [
-            ["id"],
-            ["created_at"],
-            ["task_id"],
-            ["input_evals"],
-            ["result_folder"],
-            ["best_checkpoint"],
-        ]
-
-    def update(self):
-        self.table.clear()
-        for comparison in self.get_tasks():
-            self.table.insert_row(list(comparison.values()))
-
-    def add_task(self, task: Union[ComparisonItem, Dict[str, Any]]) -> int:
-        if isinstance(task, ComparisonItem):
-            task = task.to_json()
-        super().add_task(task)
-        self.update()
-
-    def _remove_unused_args(self):
-        """
-        Removes unused arguments from the class to avoid confusion.
-        """
-        unused_args = [
-            "api",
-            "_stop_autorefresh",
-            "_refresh_thread",
-            "_refresh_interval",
-            "_autorefresh",
-            "stop_autorefresh",
-            "start_autorefresh",
-        ]
-        for arg in unused_args:
-            if hasattr(self, arg):
-                delattr(self, arg)

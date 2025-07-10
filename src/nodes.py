@@ -147,7 +147,7 @@ eval_report_after_training = EvaluationReportNode(
     y=2070,
 )
 training_charts_dummy = sly.solution.LinkNode(
-    "Training Charts", "Dummy Node", "", 250, 795, 2140, dummy_icon
+    "Training Charts", "Dummy Node", "", 200, 795, 2140, dummy_icon
 )
 checkpoints_folder = sly.solution.LinkNode(
     title="Checkpoints Folder",
@@ -161,6 +161,7 @@ checkpoints_folder = sly.solution.LinkNode(
 compare_desc = "Compare evaluation results from the latest training session againt the best model reference report. "
 "Helps track performance improvements over time and identify the most effective training setups. "
 "If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process."
+eval_dir = "/model-benchmark/1538_PASCAL VOC 2012/3703_Train MMDetection 3.0/"
 compare_node = CompareNode(
     g.api,
     g.project,
@@ -170,6 +171,7 @@ compare_node = CompareNode(
     1100,
     2300,
     tooltip_position="left",
+    evaluation_dirs=[eval_dir, eval_dir],
 )
 email_creds = SendEmail.EmailCredentials("user123@gmail.com", "pass123")
 send_email = SendEmailNode(

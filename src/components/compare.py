@@ -2,7 +2,8 @@ import datetime
 import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import supervisely as sly
+from supervisely.api.api import Api
+from supervisely.api.project_api import ProjectInfo
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
@@ -14,6 +15,8 @@ from supervisely.app.widgets import (
     Switch,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
+from supervisely.io.fs import silent_remove
+from supervisely.sly_logger import logger
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
 from supervisely.solution.components.tasks_history import SolutionTasksHistory
 
@@ -116,16 +119,14 @@ class ComparisonAutomation(Automation):
         self.scheduler.add_job(
             self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
         )
-        sly.logger.info(
-            f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds."
-        )
+        logger.info(f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds.")
 
     def remove(self):
         if self.scheduler.is_job_scheduled(self.job_id):
             self.scheduler.remove_job(self.job_id)
-            sly.logger.info(f"Removed scheduled job: {self.job_id}")
+            logger.info(f"Removed scheduled job: {self.job_id}")
         else:
-            sly.logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
+            logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
 
     @property
     def is_scheduled(self) -> bool:
@@ -143,7 +144,7 @@ class ComparisonAutomation(Automation):
             "automation_interval": self._get_automation_interval(),
         }
         DataJson().send_changes()
-        sly.logger.info("Automation settings saved.")
+        logger.info("Automation settings saved.")
 
 
 class CompareNode(SolutionElement):
@@ -152,8 +153,8 @@ class CompareNode(SolutionElement):
 
     def __init__(
         self,
-        api: sly.Api,
-        project_info: sly.ProjectInfo,
+        api: Api,
+        project_info: ProjectInfo,
         title: str,
         description: str,
         width: int = 250,
@@ -204,12 +205,12 @@ class CompareNode(SolutionElement):
             self.automation_modal.hide()
             enabled, sec = self.automation.get_automation_details()
             if not enabled:
-                sly.logger.info("Periodic comparison automation disabled.")
+                logger.info("Periodic comparison automation disabled.")
                 self.automation.scheduler.remove_job(self.job_id)
                 self.node.hide_automation_badge()
             else:
                 self.automation.apply(sec)
-                sly.logger.info(f"Scheduled periodic comparison every {sec} seconds.")
+                logger.info(f"Scheduled periodic comparison every {sec} seconds.")
             self.node.show_automation_badge()
 
             self.automation.save()
@@ -317,7 +318,7 @@ class CompareNode(SolutionElement):
     def run_evaluator_session(self) -> Optional[int]:
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
 
-        sly.logger.info("Starting Model Benchmark Evaluator task...")
+        logger.info("Starting Model Benchmark Evaluator task...")
         task_info_json = self.api.task.start(
             agent_id=self.agent_id,
             app_id=None,
@@ -330,12 +331,10 @@ class CompareNode(SolutionElement):
 
         current_time = time.time()
         while task_status := self.api.task.get_status(task_id) != self.api.task.Status.STARTED:
-            sly.logger.info("Waiting for the evaluation task to start... Status: %s", task_status)
+            logger.info("Waiting for the evaluation task to start... Status: %s", task_status)
             time.sleep(5)
             if time.time() - current_time > 300:  # 5 minutes timeout
-                sly.logger.warning(
-                    "Timeout reached while waiting for the evaluation task to start."
-                )
+                logger.warning("Timeout reached while waiting for the evaluation task to start.")
                 break
 
         ready = self.api.app.wait_until_ready_for_api_calls(task_id)
@@ -353,8 +352,8 @@ class CompareNode(SolutionElement):
         self.node.hide_failed_badge()
         self.node.hide_finished_badge()
         if len(self.evaluation_dirs) < 2:
-            sly.logger.warning("Not enough evaluation directories provided for comparison.")
-            self.show_failed_badge()
+            logger.warning("Not enough evaluation directories provided for comparison.")
+            self.node.show_failed_badge()
             return
         try:
             task_info = self.run_evaluator_session()
@@ -371,7 +370,7 @@ class CompareNode(SolutionElement):
                 task_info["status"] = self.api.task.Status.ERROR
                 self.tasks_history.add_task(task_info)
                 raise RuntimeError(f"Error in evaluation request: {response['error']}")
-            sly.logger.info("Evaluation request sent successfully.")
+            logger.info("Evaluation request sent successfully.")
             self.result_comparison_dir = response.get("data")
             self.result_comparison_link = self._get_url_from_lnk_path(
                 self.result_comparison_dir + "/Model Comparison Report.lnk"
@@ -386,7 +385,7 @@ class CompareNode(SolutionElement):
                 cb(self.result_comparison_dir, self.result_comparison_link)
             self.node.show_finished_badge()
         except:
-            sly.logger.error("Evaluation failed.", exc_info=True)
+            logger.error("Evaluation failed.", exc_info=True)
             self.node.show_failed_badge()
         finally:
             self.evaluation_dirs = []
@@ -404,7 +403,7 @@ class CompareNode(SolutionElement):
 
     def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
         if not self.api.file.exists(self.team_id, remote_lnk_path):
-            sly.logger.warning(
+            logger.warning(
                 f"Link file {remote_lnk_path} does not exist in the benchmark directory."
             )
             return ""
@@ -413,9 +412,9 @@ class CompareNode(SolutionElement):
         with open("./model_evaluation_report.lnk", "r") as file:
             base_url = file.read().strip()
 
-        sly.fs.silent_remove("./model_evaluation_report.lnk")
+        silent_remove("./model_evaluation_report.lnk")
 
-        return sly.utils.abs_url(base_url)
+        return base_url
 
     def _update_properties(self):
         new_propetries = [

@@ -133,8 +133,16 @@ evaluation_report = EvaluationReportNode(
 re_eval_dummy = sly.solution.LinkNode(
     "Re-evaluate Model", "Dummy Node", "", 250, 1100, 2025, dummy_icon
 )
-overview_dummy = sly.solution.LinkNode(
-    "Overview + how to use model", "Dummy Node", "", 250, 795, 2000, dummy_icon
+from src.components.overview import OverviewNode
+
+overview = OverviewNode(
+    g.api,
+    "supervisely-ecosystem/model-benchmark",
+    "Overview + how to use model",
+    "This node provides an overview of the RT-DETR model and how to use it.",
+    250,
+    795,
+    2000,
 )
 eval_report_after_training = EvaluationReportNode(
     g.api,
@@ -217,7 +225,7 @@ graph_builder.add_node(train_rt_detr_dummy)
 graph_builder.add_node(experiments)
 graph_builder.add_node(evaluation_report)
 graph_builder.add_node(re_eval_dummy)
-graph_builder.add_node(overview_dummy)
+graph_builder.add_node(overview)
 graph_builder.add_node(eval_report_after_training)
 graph_builder.add_node(training_charts_dummy)
 graph_builder.add_node(checkpoints_folder)
@@ -250,7 +258,7 @@ graph_builder.add_edge(re_eval_dummy, evaluation_report, end_socket="left", path
 graph_builder.add_edge(train_rt_detr_dummy, checkpoints_folder, end_socket="left", path="grid")
 graph_builder.add_edge(
     train_rt_detr_dummy,
-    overview_dummy,
+    overview,
     end_socket="left",
     path="grid",
 )

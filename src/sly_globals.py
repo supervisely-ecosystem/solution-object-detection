@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 
 import supervisely as sly
-from supervisely.solution.scheduler import TasksScheduler
 
 if sly.is_development():
     load_dotenv("local.env")
@@ -11,13 +10,14 @@ if sly.is_development():
 
 api = sly.Api.from_env()
 team_id = sly.env.team_id()
+task_id = sly.env.task_id()
 workspace_id = sly.env.workspace_id()
 project_id = sly.env.project_id()
-scheduler = TasksScheduler()
 
 project = api.project.get_info_by_id(project_id)
-update_project = False
 custom_data = project.custom_data
+
+update_project = False
 if "labeling_project" not in custom_data:
     labeling_project = api.project.create(
         workspace_id,

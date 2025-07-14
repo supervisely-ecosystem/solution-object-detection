@@ -1,13 +1,14 @@
+import random
 from typing import Optional
 
 import src.nodes as n
 import src.sly_globals as g
 import supervisely as sly
+from src.graph_builder import layout
+from supervisely.solution.scheduler import TasksScheduler
 
-# g.restore_data_state()
-
-app = sly.Application(layout=n.layout)
-app.call_before_shutdown(g.scheduler.shutdown)  # ? does not work
+app = sly.Application(layout=layout, static_dir="static")
+app.call_before_shutdown(TasksScheduler().shutdown)
 
 
 def _run_import_from_cloud(path: Optional[str] = None):
@@ -37,6 +38,7 @@ def _on_apply_automation_btn_click():
     n.cloud_import.automation_modal.hide()
     n.cloud_import.apply_automation(_run_import_from_cloud)
 
+
 def run_sampling():
     n.sampling.main_modal.hide()
     n.sampling.automation_modal.hide()
@@ -63,7 +65,6 @@ def run_sampling():
 n.sampling.run = run_sampling
 
 
-
 n.queue.set_callback(lambda: n.splits.set_items_count(n.queue.get_labeled_images_count()))
 
 
@@ -73,6 +74,11 @@ def _move_labeled_images():
         sly.logger.warning("No new accepted images to move.")
         return
     src, dst, total_moved = n.move_labeled.run(image_ids=image_ids)
+    all_dst_ids = [img_id for img_ids in dst.values() for img_id in img_ids]
+
+    split_results = n.splits.split(all_dst_ids)
+    for key in split_results:
+        n.move_labeled.add_to_collection(image_ids=split_results[key], split_name=key)
     n.queue.refresh_info()
     n.splits.set_items_count(n.queue.get_labeled_images_count())
     n.training_project.update(new_items_count=total_moved)
@@ -89,8 +95,15 @@ def _on_move_labeled_automation_btn_click():
     n.move_labeled.apply_automation(_move_labeled_images)
 
 
-
 # # * Restore data and state if available
-# sly.app.restore_data_state(g.task_id)
+sly.app.restore_data_state(g.task_id)
 
 # # * Some restoration logic (!AFTER restore_data_state)
+if n.cloud_import.automation.enabled_checkbox.is_checked():
+    n.cloud_import.apply_automation(_run_import_from_cloud)
+
+if n.sampling.automation.enabled_checkbox.is_checked():
+    n.sampling.apply_automation(n.sampling.run)
+
+if n.move_labeled.automation.enabled_checkbox.is_checked():
+    n.move_labeled.apply_automation(_move_labeled_images)

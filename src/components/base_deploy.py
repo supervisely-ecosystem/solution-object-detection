@@ -182,7 +182,7 @@ class BaseDeployGUI(Widget):
 
     def deploy(self, model: Optional[str] = None) -> None:
         try:
-            if self.model is None:
+            if model is None:
                 model = self.model_name_input.get_value()
             agent_id = self.select_agent.get_value()
             if not model:
@@ -247,20 +247,7 @@ class BaseDeployNode(SolutionElement):
         def _on_deploy_button_click():
             self.settings_modal.hide()
             self.card.loading = True
-            self.main_widget.deploy()
-            if self.main_widget.model is None:
-                return
-            self.session_link = self.main_widget.model.url
-            self.main_widget.disable_gui()
-            task_info = self.api.task.get_info_by_id(self.main_widget.model.task_id)
-            deploy_info = self.main_widget.model.get_info()
-            self.tasks_history.add_task(
-                {
-                    "id": task_info["id"],
-                    "task_info": task_info,
-                    "deploy_info": deploy_info,
-                }
-            )
+            self.deploy(model=self.main_widget.model_name_input.get_value())
             self.card.loading = False
 
         @self.main_widget.stop_button.click
@@ -370,3 +357,34 @@ class BaseDeployNode(SolutionElement):
             content=self.main_widget.content,
             size="tiny",
         )
+
+    def deploy(self, model: Optional[str] = None) -> None:
+        """
+        Deploys the model using the main widget's deploy method.
+        """
+        try:
+            if self.main_widget.model is not None:
+                self.main_widget.model.shutdown()
+                self.main_widget.enable_gui()
+                self.session_link = ""
+            self.main_widget.deploy(model=model)
+            if self.main_widget.model is not None:
+                self.session_link = self.main_widget.model.url
+            self.main_widget.disable_gui()
+            task_info = self.api.task.get_info_by_id(self.main_widget.model.task_id)
+            deploy_info = self.main_widget.model.get_info()
+            self.tasks_history.add_task(
+                {
+                    "id": task_info["id"],
+                    "task_info": task_info,
+                    "deploy_info": deploy_info,
+                }
+            )
+        except Exception as e:
+            show_dialog(
+                title="Deployment Error",
+                description=f"An error occurred while deploying the model: {str(e)}",
+                status="error",
+            )
+            self.main_widget.enable_gui()
+            self.session_link = ""

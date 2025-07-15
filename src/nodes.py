@@ -206,6 +206,18 @@ comparison_report = sly.solution.LinkNode(
 )
 comparison_report.node.disable()
 
+api_inference_node = ApiInferenceNode(
+    markdown_path="src/assets/api_inference.md",
+    title="API Inference",
+    description="Documentation on how to interact with the deployed model using Supervisely API.",
+    width=200,
+    x=1400,
+    y=2550,
+    tooltip_position="left",
+    markdown_title="How to interact with the Deployed model",
+)
+
+
 # * Create a SolutionGraphBuilder instance
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px")
 
@@ -232,6 +244,7 @@ graph_builder.add_node(checkpoints_folder)
 graph_builder.add_node(compare_node)
 graph_builder.add_node(send_email)
 graph_builder.add_node(comparison_report)
+graph_builder.add_node(api_inference_node)
 
 # * Add edges between nodes
 graph_builder.add_edge(cloud_import, input_project, path="grid")
@@ -287,6 +300,7 @@ graph_builder.add_edge(checkpoints_folder, compare_node, end_socket="left", path
 graph_builder.add_edge(re_eval_dummy, compare_node)
 graph_builder.add_edge(compare_node, send_email, end_socket="left", path="grid")
 graph_builder.add_edge(compare_node, comparison_report, end_socket="left", path="grid")
+
 
 # * Build the layout
 layout = graph_builder.build()

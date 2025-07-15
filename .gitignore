@@ -10,3 +10,5 @@ node_modules/
 debug/
 supervisely/
 supervisely
+
+email_creds.env

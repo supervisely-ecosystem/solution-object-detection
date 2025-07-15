@@ -24,6 +24,7 @@ class SendEmailAutomation(Automation):
         super().__init__()
         self.func = func
         self.widget = self._create_widget()
+        self.widget_id = self.widget.widget_id
         self.job_id = self.widget.widget_id
         self.modals = [self.modal]
 
@@ -92,11 +93,13 @@ class SendEmailHistory(TasksHistory):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._table_columns = [
+            "ID",
             "Created At",
             "Sent To",
             "Status",
         ]
         self._columns_keys = [
+            ["id"],
             ["created_at"],
             ["sent_to"],
             ["status"],
@@ -104,14 +107,16 @@ class SendEmailHistory(TasksHistory):
 
     def update(self):
         self.table.clear()
-        for task in self.get_tasks():
-            self.table.insert_row(list(task.values()))
+        for task in self._get_table_data():
+            self.table.insert_row(task)
 
     def add_task(self, task: Union["SendEmailHistory.Item", Dict[str, Any]]):
         if isinstance(task, SendEmailHistory.Item):
             task = task.to_json()
+        task["id"] = len(self.get_tasks()) + 1  # Assign a new ID
         super().add_task(task)
         self.update()
+        return task["created_at"]
 
     def update_task(
         self,
@@ -121,9 +126,9 @@ class SendEmailHistory(TasksHistory):
         if isinstance(task, SendEmailHistory.Item):
             task = task.to_json()
         tasks = self.get_tasks()
-        for task in tasks:
-            if task["created_at"] == time:
-                task.update(task)
+        for row in tasks:
+            if row["created_at"] == time:
+                row.update(task)
                 DataJson()[self.widget_id]["tasks"] = tasks
                 DataJson().send_changes()
                 return
@@ -141,9 +146,9 @@ class SendEmailNode(SolutionElement):
 
     def __init__(
         self,
-        credentials: SendEmail.EmailCredentials,
         x: int = 0,
         y: int = 0,
+        credentials: SendEmail.Credentials = None,
         width: int = 250,
         tooltip_position: Literal["left", "right"] = "right",
         *args,
@@ -153,8 +158,33 @@ class SendEmailNode(SolutionElement):
         self.tooltip_position = tooltip_position
         super().__init__(*args, **kwargs)
 
-        self.credentials = credentials
-        self.main_widget = SendEmail()
+        self.credentials = credentials or SendEmail.Credentials.from_env()
+        self.main_widget = SendEmail(
+            default_subject="Supervisely Solution Notification",
+            default_body="""
+<html>
+<head>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }}
+        .highlight {{
+            color: #1976D2;
+            font-weight: bold;
+        }}
+    </style>
+</head>
+<body>
+    <p>Hello,</p>
+    <p>This is a notification from the Supervisely Solution.</p><br><br>
+    {message}<br><br>
+    <p>Supervisely Solution</p>
+</body>
+</html>
+""",
+            show_body=False,
+        )
         self.task_history = SendEmailHistory()
         self.tasks_modal = Dialog(title="Notification History", content=self.task_history)
         self.automation = SendEmailAutomation(self.run)
@@ -199,23 +229,22 @@ class SendEmailNode(SolutionElement):
             self._settings_modal = Dialog("Notification Settings", self.main_widget, size="tiny")
         return self._settings_modal
 
-    def run(self) -> None:
+    def run(self, text: str) -> None:
         """
         Runs the SendEmailNode, sending an email with the configured settings.
         """
         self.automation.save()
-        self.node.hide_finished_badge()
-        self.node.hide_failed_badge()
         notification = SendEmailHistory.Item(self.main_widget.get_target_addresses())
-        n_idx = self.task_history.add_notification(notification)
+        n_idx = self.task_history.add_task(notification)
         try:
-            self.main_widget.send_email(self.credentials)
-            self.show_finished_badge()
-            self.task_history.update_notification_status(n_idx, SendEmailHistory.Item.Status.SENT)
+            message = self.main_widget.get_body()
+            if text:
+                message = message.format(message=text)
+            self.main_widget.send_email(self.credentials, message=message)
+            self.task_history.update_task(n_idx, {"status": SendEmailHistory.Item.Status.SENT})
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
-            self.show_failed_badge()
-            self.task_history.update_notification_status(n_idx, SendEmailHistory.Item.Status.FAILED)
+            self.task_history.update_task(n_idx, {"status": SendEmailHistory.Item.Status.FAILED})
 
     def _get_email_widget_values(self) -> Dict[str, Union[str, List[str]]]:
         return {

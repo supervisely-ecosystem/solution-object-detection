@@ -1,6 +1,7 @@
 from src.nodes.experiment_nodes import (
     compare_node,
     comparison_report,
+    deploy_node,
     evaluation_report,
     experiments,
     re_eval_dummy,
@@ -9,7 +10,6 @@ from src.nodes.experiment_nodes import (
 from src.nodes.nodes import (
     auto_import,
     cloud_import,
-    deploy_node,
     input_project,
     labeling_performance,
     labeling_project_node,

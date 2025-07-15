@@ -1,6 +1,5 @@
 import src.sly_globals as g
 import supervisely as sly
-from src.components import BaseDeployNode
 
 cloud_import = sly.solution.CloudImport(x=480, y=30, api=g.api, project_id=g.project.id)
 auto_import = sly.solution.ManualImport(x=820, y=30, api=g.api, project_id=g.project.id)
@@ -63,14 +62,4 @@ versioning = sly.solution.LinkNode(
     description="Versioning allows you to track changes in your datasets over time. Each version is a snapshot of the dataset at a specific point in time, enabling you to revert to previous versions if needed.",
     width=250,
     link=g.training_project.url.replace("datasets", "versions"),
-)
-
-
-deploy_node = BaseDeployNode(
-    x=1000,
-    y=470,
-    api=g.api,
-    title="Deploy Model",
-    description="Deploy the trained model to the Supervisely platform for inference.",
-    icon=sly.app.widgets.Icons(class_name="zmdi zmdi-deployment-unit"),
 )

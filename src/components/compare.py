@@ -1,7 +1,12 @@
 import datetime
+import json
+import os
+import tempfile
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+from supervisely._utils import abs_url
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
 from supervisely.app.content import DataJson
@@ -15,13 +20,13 @@ from supervisely.app.widgets import (
     Switch,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
+from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.io.fs import silent_remove
 from supervisely.sly_logger import logger
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
-from supervisely.solution.components.tasks_history import SolutionTasksHistory
 
 
-class ComparisonHistory(SolutionTasksHistory):
+class ComparisonHistory(TasksHistory):
 
     def __init__(
         self,
@@ -31,22 +36,22 @@ class ComparisonHistory(SolutionTasksHistory):
         self._table_columns = [
             "Task ID",
             "Created At",
-            "Input Evaluations",
-            "Result Folder",
+            # "Input Evaluations",
+            "Comparison Report",
             "Best checkpoint",
         ]
         self._columns_keys = [
             ["id"],
             ["created_at"],
-            ["input_evals"],
-            ["result_folder"],
+            # ["evaluation_dirs"],
+            ["result_link"],
             ["best_checkpoint"],
         ]
 
     def update(self):
         self.table.clear()
-        for task in self.get_tasks():
-            self.table.insert_row(list(task.values()))
+        for task in self._get_table_data():
+            self.table.insert_row(task)
 
     def add_task(self, task: Dict[str, Any]) -> int:
         super().add_task(task)
@@ -63,7 +68,6 @@ class ComparisonAutomation(Automation):
         self.func = func
         self.widget = self._create_widget()
         self.job_id = self.widget.widget_id
-        self.modals = [self.modal]
 
     def get_automation_details(self) -> Tuple[bool, int]:
         """
@@ -184,19 +188,20 @@ class CompareNode(SolutionElement):
         self.tooltip_position = tooltip_position
         self._eval_dirs = []  # List of directories to compare
 
-        self.result_comparison_dir = None
-        self.result_comparison_link = None
+        self.result_dir = None
+        self.result_link = None
         self.result_best_checkpoint = None
 
         self.agent_id = agent_id or self.get_available_agent_id()
         if self.agent_id is None:
             raise ValueError("No available agent found. Please check your agents.")
 
-        self.automation = ComparisonAutomation(self.compare)
-        self.tasks_history = SolutionTasksHistory(self.api)
+        self.automation = ComparisonAutomation(self.run)
+        self.tasks_history = ComparisonHistory()
+        self.tasks_modal = Dialog(title="Comparison History", content=self.tasks_history)
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        self.modals = self.tasks_history.modals + self.automation.modals
+        self.modals = [self.tasks_modal, self.automation.modal]
 
         self._finish_callbacks = []
 
@@ -263,13 +268,18 @@ class CompareNode(SolutionElement):
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         properties = [
+            # {
+            #     "key": "Best model",
+            #     "value": "Unknown",
+            #     "highlight": True,
+            #     "link": False,
+            # },
             {
-                "key": "Best model",
-                "value": "Unknown",
-                "highlight": True,
+                "key": "Re-deploy Best model automatically",
+                "value": "✖",
+                "highlight": False,
                 "link": False,
             },
-            {"key": "Automatic re-deployment", "value": "✖", "highlight": False, "link": False},
         ]
         return SolutionCard.Tooltip(
             description=self.description, content=self._get_buttons(), properties=properties
@@ -288,7 +298,7 @@ class CompareNode(SolutionElement):
             @self._run_btn.click
             def run_comparison():
                 self._run_btn.disable()
-                self.compare()
+                self.run()
                 self._run_btn.enable()
 
         if not hasattr(self, "_automate_btn"):
@@ -308,7 +318,7 @@ class CompareNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._tasks_history_btn.click(self.tasks_history.tasks_modal.show)
+            self._tasks_history_btn.click(self.tasks_modal.show)
         return [
             self._run_btn,
             self._automate_btn,
@@ -326,7 +336,6 @@ class CompareNode(SolutionElement):
             description=f"Solutions: {self.api.task_id}",
             module_id=module_id,
         )
-        self.tasks_history.add_task(*task_info_json)
         task_id = task_info_json["id"]
 
         current_time = time.time()
@@ -337,23 +346,20 @@ class CompareNode(SolutionElement):
                 logger.warning("Timeout reached while waiting for the evaluation task to start.")
                 break
 
-        ready = self.api.app.wait_until_ready_for_api_calls(task_id)
+        ready = self.api.app.wait_until_ready_for_api_calls(task_id, attempts=50)
         if not ready:
             raise RuntimeError(f"Task {task_id} is not ready for API calls.")
 
         return task_info_json
 
-    def compare(
+    def run(
         self,
     ):
         """
         Sends a request to the backend to start the evaluation process.
         """
-        self.node.hide_failed_badge()
-        self.node.hide_finished_badge()
         if len(self.evaluation_dirs) < 2:
             logger.warning("Not enough evaluation directories provided for comparison.")
-            self.node.show_failed_badge()
             return
         try:
             task_info = self.run_evaluator_session()
@@ -371,24 +377,20 @@ class CompareNode(SolutionElement):
                 self.tasks_history.add_task(task_info)
                 raise RuntimeError(f"Error in evaluation request: {response['error']}")
             logger.info("Evaluation request sent successfully.")
-            self.result_comparison_dir = response.get("data")
-            self.result_comparison_link = self._get_url_from_lnk_path(
-                self.result_comparison_dir + "/Model Comparison Report.lnk"
-            )
+            self.result_dir = response.get("data")
+            self.result_link = self._get_url_from_lnk_path(self.result_dir)
             # @ todo: find the best checkpoint from the evaluation results
             # self._update_properties()
             task_info["status"] = "completed"
-            task_info["result_comparison_dir"] = self.result_comparison_dir
-            task_info["result_comparison_link"] = self.result_comparison_link
+            task_info["result_dir"] = self.result_dir
+            task_info["result_link"] = abs_url(self.result_link)
             self.tasks_history.add_task(task_info)
             for cb in self._finish_callbacks:
-                cb(self.result_comparison_dir, self.result_comparison_link)
-            self.node.show_finished_badge()
-        except:
-            logger.error("Evaluation failed.", exc_info=True)
-            self.node.show_failed_badge()
-        finally:
-            self.evaluation_dirs = []
+                cb(self.result_dir, self.result_link)
+            self.api.task.stop(task_id)
+            logger.info(f"Evaluation completed successfully. Task ID: {task_id}")
+        except Exception as e:
+            logger.error(f"Evaluation failed. {e}", exc_info=True)
 
     def get_available_agent_id(self) -> int:
         agents = self.api.agent.get_list_available(self.team_id, True)
@@ -401,7 +403,8 @@ class CompareNode(SolutionElement):
         self._finish_callbacks.append(fn)
         return fn
 
-    def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
+    def _get_url_from_lnk_path(self, remote_lnk_dir: str) -> str:
+        remote_lnk_path = remote_lnk_dir + "/Model Comparison Report.lnk"
         if not self.api.file.exists(self.team_id, remote_lnk_path):
             logger.warning(
                 f"Link file {remote_lnk_path} does not exist in the benchmark directory."
@@ -418,12 +421,12 @@ class CompareNode(SolutionElement):
 
     def _update_properties(self):
         new_propetries = [
-            {
-                "key": "Best model",
-                "value": self.result_best_checkpoint or "Unknown",
-                "highlight": True,
-                "link": False,
-            },
+            # {
+            #     "key": "Best model",
+            #     "value": self.result_best_checkpoint or "Unknown",
+            #     "highlight": True,
+            #     "link": False,
+            # },
             {
                 "key": "Re-deploy Best model automatically",
                 "value": "✔️" if self.is_automated else "✖",
@@ -433,3 +436,70 @@ class CompareNode(SolutionElement):
         ]
         for prop in new_propetries:
             self.card.update_property(**prop)
+
+    def is_new_model_better(self, primary_metric: str) -> bool:
+        """
+        Compares the primary metrics of two checkpoints.
+        Returns "better", "worse", or "equal".
+        """
+        if not primary_metric:
+            raise ValueError("Primary metric must be provided for comparison.")
+
+        if len(self.evaluation_dirs) != 2:
+            raise ValueError("Evaluation directories not set or not enough for comparison.")
+
+        metric_old, _ = self._get_info_from_experiment(primary_metric, self.evaluation_dirs[0])
+        metric_new, new_checkpoint_path = self._get_info_from_experiment(
+            primary_metric, self.evaluation_dirs[1]
+        )
+        if metric_old is None or metric_new is None:
+            raise ValueError(f"Primary metric '{primary_metric}' not found in evaluation results.")
+
+        # Compare metrics (assuming higher is better)
+        new_model_better = metric_new > metric_old
+        if new_model_better:
+            logger.info(f"{primary_metric} of new model is better: {metric_new} > {metric_old}")
+            if new_checkpoint_path:
+                logger.info(f"New best checkpoint path: {new_checkpoint_path}")
+                self.result_best_checkpoint = str(new_checkpoint_path)
+        return new_model_better
+
+    def _get_experiments_path(self, path: str) -> str:
+        """
+        Returns the experiments path for the given evaluation directory.
+
+        from "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/"
+        to "/experiments/73_sample COCO/7958_YOLO/experiment_info.json"
+        """
+        parts = path.strip("/").split("/")
+        if len(parts) < 3:
+            raise ValueError(f"Invalid evaluation directory path: {path}")
+        project_name = parts[1]
+        experiment_name = parts[2].replace("Train ", "").split(" ")[0]
+        return f"/experiments/{project_name}/{experiment_name}/experiment_info.json"
+
+    def _get_info_from_experiment(
+        self, metric_name: str, evaluation_dir: str
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """
+        Returns the value of the specified metric from the evaluation results.
+        """
+        data_path = self._get_experiments_path(evaluation_dir)
+        if not self.api.storage.exists(self.team_id, data_path):
+            raise ValueError(f"Not found experiment_info: {data_path}")
+
+        temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False)
+        metric, best_checkpoint_path = None, None
+        try:
+            self.api.storage.download(self.team_id, data_path, temp_file.name)
+            with open(temp_file.name, "r") as f:
+                data = json.load(f)
+                metric = data.get("evaluation_metrics", {}).get(metric_name, None)
+                artifacts_dir = data.get("artifacts_dir")
+                best_checkpoint = data.get("best_checkpoint")
+                if artifacts_dir and best_checkpoint:
+                    best_checkpoint_path = Path(artifacts_dir) / "checkpoints" / best_checkpoint
+        finally:
+            if os.path.exists(temp_file.name):
+                silent_remove(temp_file.name)
+        return metric, best_checkpoint_path

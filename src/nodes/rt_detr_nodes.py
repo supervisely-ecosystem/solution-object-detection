@@ -5,6 +5,7 @@ from src.components.evaluation_report import EvaluationReportNode
 
 train_node = BaseTrainNode(
     api=g.api,
+    project=g.training_project.id,
     title="Train RT-DETR-v2",
     description="Train the model on the labeled data from the Training Project. "
     "The model will be trained using the latest labeled batch of images (train collection).",

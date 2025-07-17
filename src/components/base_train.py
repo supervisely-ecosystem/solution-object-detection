@@ -101,17 +101,26 @@ class BaseTrainGUI(Widget):
         train_collections, val_collections = self._get_train_val_collections()
         split_mode = "collections" if train_collections and val_collections else "random"
         content = NewExperiment(
-            project_id=self.project.id,
-            workspace_id=self.workspace_id,
             team_id=self.team_id,
+            workspace_id=self.workspace_id,
+            project_id=self.project.id,
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,
             selected_frameworks=self.frameworks,
-            framework_selection_disabled=self.frameworks is not None,
-            train_val_split_mode=split_mode,
+            train_val_split_mode=split_mode, # only collections?
             train_collections=train_collections,
             val_collections=val_collections,
+            # gui selectors disabled
+            cv_task_selection_disabled=True,
+            project_selection_disabled=False,
+            classes_selection_disabled=False,
+            model_selection_disabled=False,
+            evaluation_selection_disabled=False,
+            speed_test_selection_disabled=False,
+            train_val_split_selection_disabled=True,
+            framework_selection_disabled=self.frameworks is not None,
+            architecture_selection_disabled=True,
         )
 
         @content.visible_changed

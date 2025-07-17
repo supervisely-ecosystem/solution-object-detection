@@ -49,9 +49,9 @@ training_project = sly.solution.ProjectNode(
     x=625,
     y=1490,
     api=g.api,
-    project_id=g.labeling_project.id,
+    project_id=g.training_project.id,
     title="Training Project",
-    description="Project specifically for labeling data. All data in this project is in the labeling process. After labeling, data will be moved to the Training Project.",
+    description="Project specifically for training data. All data in this project is in the training process. After training, data will be moved to the Training Project.",
     is_training=True,
 )
 

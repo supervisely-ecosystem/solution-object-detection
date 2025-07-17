@@ -1,5 +1,4 @@
 */supervisely.env
-.vscode/
 .idea/
 node_modules/
 .DS_Store
@@ -10,5 +9,6 @@ node_modules/
 debug/
 supervisely/
 supervisely
+static/
 
 email_creds.env

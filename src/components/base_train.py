@@ -1,10 +1,12 @@
 # здесь будет класс, которые будет отвечать за деплой модели, показывать информацию о ней
 
 
-from typing import List, Literal, Optional
+from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import supervisely.io.env as sly_env
+from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
+from supervisely.api.project_api import ProjectInfo
 from supervisely.app.exceptions import show_dialog
 from supervisely.app.widgets import (
     AgentSelector,
@@ -21,8 +23,26 @@ from supervisely.app.widgets import (
     Text,
     Widget,
 )
-from supervisely.solution.base_node import SolutionCardNode, SolutionElement
+from supervisely.nn.task_type import TaskType
+from supervisely.project.project_type import ProjectType
+from supervisely.sly_logger import logger
+from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
 from supervisely.solution.components.tasks_history import SolutionTasksHistory
+
+
+class TrainAutomation(Automation):
+    def __init__(self):
+        pass
+
+    def add_task(self, task_id: int) -> bool:
+        """run scheduler tasl"""
+        pass
+
+    def apply(self, sec: int, *args) -> None:
+        self.scheduler.add_job(
+            self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
+        )
+        logger.info(f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds.")
 
 
 class TrainTasksHistory(SolutionTasksHistory):
@@ -55,28 +75,63 @@ class TrainTasksHistory(SolutionTasksHistory):
 
 
 class BaseTrainGUI(Widget):
+    cv_task: TaskType = TaskType.OBJECT_DETECTION
+    frameworks: Optional[List[str]] = None
 
     def __init__(
         self,
         api: Api,
-        workspace_id: int,
+        project: Union[ProjectInfo, int],
+        workspace_id: Optional[int] = None,
         team_id: Optional[int] = None,
         widget_id: Optional[str] = None,
     ):
         self.api = api
-        self.workspace_id = workspace_id
-        self.team_id = team_id
+        self.project = (
+            project
+            if isinstance(project, ProjectInfo)
+            else self.api.project.get_info_by_id(project)
+        )
+        self.workspace_id = workspace_id or self.project.workspace_id
+        self.team_id = team_id or self.project.team_id
         super().__init__(widget_id=widget_id)
         self.content = self._init_gui()
 
-    def _init_gui(self) -> Container:
-        content = NewExperiment(workspace_id=self.workspace_id, team_id=self.team_id)
+    def _init_gui(self) -> NewExperiment:
+        train_collections, val_collections = self._get_train_val_collections()
+        split_mode = "collections" if train_collections and val_collections else "random"
+        content = NewExperiment(
+            project_id=self.project.id,
+            workspace_id=self.workspace_id,
+            team_id=self.team_id,
+            filter_projects_by_workspace=True,
+            project_types=[ProjectType.IMAGES],
+            cv_task=self.cv_task,
+            selected_frameworks=self.frameworks,
+            framework_selection_disabled=self.frameworks is not None,
+            train_val_split_mode=split_mode,
+            train_collections=train_collections,
+            val_collections=val_collections,
+        )
 
         @content.visible_changed
         def _on_visible_changed(visible: bool):
             print(f"NewExperiment visibility changed: {visible}")
 
         return content
+
+    def _get_train_val_collections(self) -> Tuple[List[int], List[int]]:
+        if self.project.type != ProjectType.IMAGES:
+            return [], []
+        train_collections, val_collections = [], []
+        all_collections = self.api.entities_collection.get_list(self.project.id)
+        for collection in all_collections:
+            if collection.name == "All_train":
+                train_collections.append(collection.id)
+            elif collection.name == "All_val":
+                val_collections.append(collection.id)
+
+        return train_collections, val_collections
 
     def get_json_data(self):
         return {}
@@ -87,31 +142,26 @@ class BaseTrainGUI(Widget):
 
 class BaseTrainNode(SolutionElement):
     gui_class = BaseTrainGUI
+    title = "Train Model"
+    description = "Train a model on the selected project. The model will be trained on the training collection and validated on the validation collection. If collections are not set, the model will be trained on random split of the project images."
 
     def __init__(
         self,
         api: Api,
-        title: str,
-        description: str,
-        workspace_id: int = None,
+        project: Union[ProjectInfo, int],
         x: int = 0,
         y: int = 0,
         icon: Optional[Icons] = None,
         *args,
         **kwargs,
     ):
-
-        self.title = title
-        self.description = description
         self.icon = icon
         self.width = 250
-        self.workspace_id = workspace_id or sly_env.workspace_id()
+        self.project_id = project.id if isinstance(project, ProjectInfo) else project
 
         self.api = api
         self.tasks_history = TrainTasksHistory(self.api, title="Train Tasks History")
-        self.main_widget = self.gui_class(
-            api=api, workspace_id=self.workspace_id, team_id=sly_env.team_id()
-        )
+        self.main_widget = self.gui_class(api=api, project=self.project_id)
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
@@ -120,6 +170,8 @@ class BaseTrainNode(SolutionElement):
             self.tasks_history.logs_modal,
             self.main_widget.content,
         ]
+        self._train_started_cb = []
+        self._train_finished_cb = []
         super().__init__(*args, **kwargs)
 
         @self.card.click
@@ -191,3 +243,48 @@ class BaseTrainNode(SolutionElement):
         else:
             self._session_link = value
         self.open_session_button.link = value
+
+    def set_collection_ids(
+        self,
+        train_collection_id: Optional[int] = None,
+        val_collection_id: Optional[int] = None,
+    ):
+        """
+        Set the collection IDs for training and validation collections.
+        """
+        if train_collection_id is not None:
+            self.main_widget.content.train_collections = [train_collection_id]
+        if val_collection_id is not None:
+            self.main_widget.content.val_collections = [val_collection_id]
+
+    def set_classes(self, classes: Union[List[str], List[ObjClass]]):
+        """
+        Set the classes for the training session.
+        """
+        if isinstance(classes, list) and all(isinstance(cls, str) for cls in classes):
+            self.main_widget.content.classes = classes
+        elif isinstance(classes, list) and all(isinstance(cls, ObjClass) for cls in classes):
+            self.main_widget.content.classes = [c.name for c in classes]
+        else:
+            raise ValueError("Classes must be a list of strings or ObjClass instances.")
+
+    def on_train_started(self, fn: Callable) -> Callable:
+        """
+        Register a callback function to be called when the training starts.
+        """
+        self._train_started_cb.append(fn)
+        return fn
+
+    def on_train_finished(self, fn: Callable) -> Callable:
+        """
+        Register a callback function to be called when the training finishes.
+        """
+        self._train_finished_cb.append(fn)
+        return fn
+
+    def check_train_finised(self, task_id: int) -> bool:
+        """
+        Check if the training task has finished.
+        """
+        # todo: Implement the logic to check train task status.
+        pass

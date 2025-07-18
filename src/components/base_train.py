@@ -112,7 +112,7 @@ class BaseTrainGUI(Widget):
             team_id=self.team_id,
             workspace_id=self.workspace_id,
             project_id=self.project.id,
-            step="1", # 3 - classes selection
+            step=3, # 3 - classes selection
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,

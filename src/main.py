@@ -107,3 +107,5 @@ if n.sampling.automation.enabled_checkbox.is_checked():
 
 if n.move_labeled.automation.enabled_checkbox.is_checked():
     n.move_labeled.apply_automation(_move_labeled_images)
+
+n.redeploy_settings.load_settings()

@@ -3,6 +3,7 @@ import supervisely as sly
 from src.components import BaseDeployNode
 from src.components.compare import CompareNode
 from src.components.evaluation_report import EvaluationReportNode
+from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
@@ -62,6 +63,7 @@ comparison_report = sly.solution.LinkNode(
 )
 comparison_report.node.disable()
 
+redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
 
 deploy_node = BaseDeployNode(
     x=1000,

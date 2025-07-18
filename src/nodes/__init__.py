@@ -5,6 +5,7 @@ from src.nodes.experiment_nodes import (
     evaluation_report,
     experiments,
     re_eval_dummy,
+    redeploy_settings,
     send_email,
 )
 from src.nodes.nodes import (

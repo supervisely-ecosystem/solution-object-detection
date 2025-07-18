@@ -4,6 +4,7 @@
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import supervisely.io.env as sly_env
+from supervisely import ProjectMeta
 from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
@@ -101,18 +102,15 @@ class BaseTrainGUI(Widget):
         train_collections, val_collections = self._get_train_val_collections()
         split_mode = "collections" if train_collections and val_collections else "random"
         
-        if self.cv_task == TaskType.OBJECT_DETECTION:
-            self.cv_task = "object-detection"
-        elif self.cv_task == TaskType.INSTANCE_SEGMENTATION:
-            self.cv_task = "instance-segmentation"
-        elif self.cv_task == TaskType.SEMANTIC_SEGMENTATION:
-            self.cv_task = "semantic-segmentation"
+        project_meta = ProjectMeta.from_json(self.api.project.get_meta(self.project.id))
+        classes = [obj_cls.name for obj_cls in project_meta.obj_classes]
 
         content = NewExperiment(
             team_id=self.team_id,
             workspace_id=self.workspace_id,
             project_id=self.project.id,
-            step=3, # 3 - classes selection
+            classes=classes,
+            step=5, # 5 - start with model selection
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,
@@ -124,7 +122,7 @@ class BaseTrainGUI(Widget):
             cv_task_selection_disabled=True, # 1 - cv task selection
             project_selection_disabled=True, # 2 - project selection
             classes_selection_disabled=False, # 3 - classes selection
-            train_val_split_selection_disabled=True, # 4 - train/val split selection
+            train_val_split_selection_disabled=False, # 4 - train/val split selection
             model_selection_disabled=False, # 5 - model selection
             evaluation_selection_disabled=False, # 9 - evaluation selection
             speed_test_selection_disabled=False, # 9 - speed test selection
@@ -139,7 +137,7 @@ class BaseTrainGUI(Widget):
         return content
 
     def _get_train_val_collections(self) -> Tuple[List[int], List[int]]:
-        if self.project.type != ProjectType.IMAGES:
+        if self.project.type != ProjectType.IMAGES.value:
             return [], []
         train_collections, val_collections = [], []
         all_collections = self.api.entities_collection.get_list(self.project.id)

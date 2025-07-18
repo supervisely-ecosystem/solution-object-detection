@@ -1,9 +1,12 @@
-import datetime
 import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 import supervisely as sly
+from src.components.comparison_history.comparison_history import (
+    ComparisonHistory,
+    ComparisonItem,
+)
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     Button,
@@ -18,141 +21,6 @@ from supervisely.app.widgets import (
 from supervisely.app.widgets.dialog.dialog import Dialog
 from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
-
-
-class ComparisonTasksHistory(TasksHistory):
-    def __init__(self, api: sly.Api, widget_id: str = None):
-        super().__init__(api, widget_id=widget_id)
-        self._table_columns = [
-            "ID",
-            "App Name",
-            "Started At",
-            "Status",
-        ]
-        self._columns_keys = [
-            ["id"],
-            ["meta", "app", "name"],
-            ["started_at"],
-            ["status"],
-        ]
-
-    def _taskinfo_to_dict(self, task_info: Dict[str, Any]) -> Dict[str, Any]:
-        task_status_to_badge = {
-            "started": "Started ⚡",
-            "error": "Error ❌",
-            "finished": "Finished ✅",
-            "stopped": "Stopped ⏹️",
-        }
-
-        return {
-            "id": task_info["id"],
-            "name": task_info["meta"]["app"]["name"],
-            "started_at": task_info["startedAt"],
-            "status": task_status_to_badge.get(
-                task_info["status"], task_info["status"].capitalize()
-            ),
-        }
-
-    def update(self):
-        self.table.clear()
-        for task in self.get_tasks():
-            task_info = self.api.task.get_info_by_id(task["id"])
-            self.table.insert_row(list(self._taskinfo_to_dict(task_info).values()))
-
-    def add_task(self, task: Dict[str, Any]):
-        super().add_task(task)
-        self.update()
-
-
-class ComparisonItem:
-    def __init__(
-        self,
-        comparison_id: int,
-        task_id: int,
-        input_evals: Union[List[str], str],
-        result_folder: str,
-        best_checkpoint: str,
-        created_at: str = None,
-    ):
-        """
-        Initialize a comparison item with task ID, input evaluations, result folder, best checkpoint, and creation time.
-        """
-        self.comparison_id = comparison_id
-        self.task_id = task_id
-        self.input_evals = input_evals if isinstance(input_evals, list) else [input_evals]
-        self.result_folder = result_folder
-        self.best_checkpoint = best_checkpoint
-        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    def to_json(self) -> Dict[str, Any]:
-        """Convert the comparison item to a JSON serializable format."""
-        return {
-            "id": self.comparison_id,
-            "created_at": self.created_at,
-            "task_id": self.task_id,
-            "input_evals": ", ".join(self.input_evals),
-            "result_folder": self.result_folder,
-            "best_checkpoint": self.best_checkpoint,
-        }
-
-
-class ComparisonHistory(TasksHistory):
-    def __init__(
-        self,
-        widget_id: str = None,
-    ):
-        super().__init__(widget_id=widget_id)
-        self._remove_unused_args()
-        self._table_columns = [
-            "ID",
-            "Created At",
-            "Task ID",
-            "Input Evaluations",
-            "Result Folder",
-            "Best checkpoint",
-        ]
-        self._columns_keys = [
-            ["id"],
-            ["created_at"],
-            ["task_id"],
-            ["input_evals"],
-            ["result_folder"],
-            ["best_checkpoint"],
-        ]
-
-    def update(self):
-        self.table.clear()
-        for comparison in self.get_tasks():
-            self.table.insert_row(list(comparison.values()))
-
-    def add_task(self, task: Union[ComparisonItem, Dict[str, Any]]) -> int:
-        if isinstance(task, ComparisonItem):
-            task = task.to_json()
-        super().add_task(task)
-        self.update()
-
-    def _remove_unused_args(self):
-        """
-        Removes unused arguments from the class to avoid confusion.
-        """
-        unused_args = [
-            "api",
-            "_stop_autorefresh",
-            "_refresh_thread",
-            "_refresh_interval",
-        ]
-        for arg in unused_args:
-            if hasattr(self, arg):
-                delattr(self, arg)
-
-        unused_fns = [
-            "_autorefresh",
-            "stop_autorefresh",
-            "start_autorefresh",
-        ]
-        notimplemented_text = "Method not implemented in %s.".format(self.__class__.__name__)
-        for fn in unused_fns:
-            setattr(self, fn, lambda *args, **kwargs: sly.logger.error(notimplemented_text))
 
 
 class ComparisonAutomation(Automation):
@@ -236,7 +104,6 @@ class CompareNode(SolutionElement):
             self.automation_modal,
             self.comparison_history_modal,
             self.tasks_history_modal,
-            self.tasks_history.logs_modal,
         ]
 
         self._finish_callbacks = []
@@ -328,12 +195,12 @@ class CompareNode(SolutionElement):
         return self._tasks_history_modal
 
     @property
-    def tasks_history(self) -> ComparisonTasksHistory:
+    def tasks_history(self) -> TasksHistory:
         """
         Returns the tasks history instance.
         """
         if not hasattr(self, "_tasks_history"):
-            self._tasks_history = ComparisonTasksHistory(self.api)
+            self._tasks_history = TasksHistory(self.api)
         return self._tasks_history
 
     def _init_automation_modal(self) -> Dialog:
@@ -483,41 +350,16 @@ class CompareNode(SolutionElement):
             self._tasks_history_btn,
         ]
 
-    def _get_first_available_session(self, module_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Returns the first available session for the Model Benchmark Evaluator.
-        If no session is available, returns None.
-        """
-        sessions = self.api.app.get_sessions(
-            self.team_id, module_id, statuses=[self.api.task.Status.STARTED]
-        )
-        return next(iter(sessions), None)
-
-    def _taskinfo_to_dict(self, task_info: Dict[str, Any]) -> Dict[str, Any]:
-        task_status_to_badge = {
-            "started": "Started ⚡",
-            "error": "Error ❌",
-            "finished": "Finished ✅",
-            "stopped": "Stopped ⏹️",
-        }
-
-        return {
-            "id": task_info["id"],
-            "name": task_info["meta"]["app"]["name"],
-            "started_at": task_info["startedAt"],
-            "status": task_status_to_badge.get(
-                task_info["status"], task_info["status"].capitalize()
-            ),
-        }
-
     def run_evaluator_session_if_needed(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
-        available_session = self._get_first_available_session(module_id)
-        if available_session is not None:
+        available_sessions = self.api.app.get_sessions(
+            self.team_id, module_id, statuses=[self.api.task.Status.STARTED]
+        )
+        session_running = len(available_sessions) > 0
+        if session_running:
             sly.logger.info("Model Benchmark Evaluator session is already running, skipping start.")
-            task_info = self.api.task.get_info_by_id(available_session.task_id)
-            self.tasks_history.add_task(self._taskinfo_to_dict(task_info))
-            return available_session.task_id
+            self.tasks_history.add_task(*available_sessions[0])
+            return available_sessions[0].task_id
 
         sly.logger.info("Starting Model Benchmark Evaluator task...")
         task_info_json = self.api.task.start(
@@ -529,7 +371,7 @@ class CompareNode(SolutionElement):
         )
         if task_info_json is None:
             raise RuntimeError("Failed to start the evaluation task.")
-        self.tasks_history.add_task(self._taskinfo_to_dict(task_info))
+        self.tasks_history.add_task(*task_info_json)
         task_id = task_info_json["taskId"]
 
         current_time = time.time()
@@ -561,8 +403,9 @@ class CompareNode(SolutionElement):
         try:
             # raise RuntimeError("This is a test error to check error handling.")
             task_id = self.run_evaluator_session_if_needed()
+            request_data = {"eval_dirs": self.eval_dirs}
             response = self.api.task.send_request(
-                task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.eval_dirs}
+                task_id, self.COMPARISON_ENDPOINT, data=request_data
             )
             if "error" in response:
                 raise RuntimeError(f"Error in evaluation request: {response['error']}")
@@ -571,17 +414,12 @@ class CompareNode(SolutionElement):
             self.result_comparison_link = self._get_url_from_lnk_path(
                 self.result_comparison_dir + "/Model Comparison Report.lnk"
             )
-            # @todo: find the best checkpoint from the evaluation results
+            # @ todo: find the best checkpoint from the evaluation results
             # self._update_properties()
-            comparison_id = int(self.result_comparison_link.split("id=")[-1])
             comparison = ComparisonItem(
-                comparison_id,
-                task_id,
-                self.eval_dirs,
-                self.result_comparison_dir,
-                self.result_best_checkpoint,
+                task_id, self.eval_dirs, self.result_comparison_dir, self.result_best_checkpoint
             )
-            self.comparison_history.add_task(comparison)
+            self.comparison_history.add_comparison(comparison)
             for cb in self._finish_callbacks:
                 cb(self.result_comparison_dir, self.result_comparison_link)
             self.show_finished_badge()
@@ -716,3 +554,84 @@ class CompareNode(SolutionElement):
         ]
         for prop in new_propetries:
             self.card.update_property(**prop)
+
+
+class ComparisonItem:
+    def __init__(
+        self,
+        task_id: str,
+        input_evals: Union[List[str], str],
+        result_folder: str,
+        best_checkpoint: str,
+        created_at: str = None,
+    ):
+        """
+        Initialize a comparison item with task ID, input evaluations, result folder, best checkpoint, and creation time.
+        """
+        self.task_id = task_id
+        self.input_evals = input_evals if isinstance(input_evals, list) else [input_evals]
+        self.result_folder = result_folder
+        self.best_checkpoint = best_checkpoint
+        self.created_at = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def to_json(self) -> Dict[str, Any]:
+        """Convert the comparison item to a JSON serializable format."""
+        return {
+            "created_at": self.created_at,
+            "task_id": self.task_id,
+            "input_evals": ", ".join(self.input_evals),
+            "result_folder": self.result_folder,
+            "best_checkpoint": self.best_checkpoint,
+        }
+
+
+class ComparisonHistory(TasksHistory):
+    def __init__(
+        self,
+        widget_id: str = None,
+    ):
+        super().__init__(widget_id=widget_id)
+        self._remove_unused_args()
+        self._table_columns = [
+            "ID" "Created At",
+            "Task ID",
+            "Input Evaluations",
+            "Result Folder",
+            "Best checkpoint",
+        ]
+        self._columns_keys = [
+            ["id"],
+            ["created_at"],
+            ["task_id"],
+            ["input_evals"],
+            ["result_folder"],
+            ["best_checkpoint"],
+        ]
+
+    def update(self):
+        self.table.clear()
+        for comparison in self.get_tasks():
+            self.table.insert_row(list(comparison.values()))
+
+    def add_task(self, task: Union[ComparisonItem, Dict[str, Any]]) -> int:
+        if isinstance(task, ComparisonItem):
+            task = task.to_json()
+        super().add_task(task)
+        self.update()
+
+    def _remove_unused_args(self):
+        """
+        Removes unused arguments from the class to avoid confusion.
+        """
+        unused_args = [
+            "api",
+            "_stop_autorefresh",
+            "_refresh_thread",
+            "_refresh_interval",
+            "_autorefresh",
+            "stop_autorefresh",
+            "start_autorefresh",
+        ]
+        for arg in unused_args:
+            if hasattr(self, arg):
+                delattr(self, arg)

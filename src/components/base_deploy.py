@@ -358,6 +358,38 @@ class BaseDeployNode(SolutionElement):
             size="tiny",
         )
 
+    def _send_freeze_request(self):
+        res = self.api.task.send_request(self.main_widget.model.task_id, "/freeze_model")
+        print(res)
+
+    def freeze_model_session_cb(self, delay_seconds):  # wrap the inference function with it
+        import functools
+        import threading
+
+        def decorator(func):
+            timer_ref = {"timer": None, "lock": threading.Lock()}
+
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                # Execute the original function
+                result = func(*args, **kwargs)
+
+                with timer_ref["lock"]:
+                    # Cancel existing timer if it exists
+                    if timer_ref["timer"] is not None:
+                        timer_ref["timer"].cancel()
+
+                    # Create new timer
+                    timer_ref["timer"] = threading.Timer(delay_seconds, self._send_freeze_request)
+                    timer_ref["timer"].daemon = True
+                    timer_ref["timer"].start()
+
+                return result
+
+            return wrapper
+
+        return decorator
+
     def deploy(self, model: Optional[str] = None) -> None:
         """
         Deploys the model using the main widget's deploy method.

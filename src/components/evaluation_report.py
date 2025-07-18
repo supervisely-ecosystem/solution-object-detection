@@ -2,6 +2,7 @@ from typing import Literal, Optional
 
 import supervisely as sly
 from supervisely.app.widgets import Icons, SolutionCard
+from supervisely.app.content import DataJson
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 
 
@@ -30,11 +31,11 @@ class EvaluationReportNode(SolutionElement):
         self.width = width
         self.icon = icon
         self.tooltip_position = tooltip_position
+        super().__init__(*args, **kwargs)
 
-        self.set_benchmark_dir(benchmark_dir)
+        self.set_benchmark_dir(self.benchmark_dir or benchmark_dir)
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        super().__init__(*args, **kwargs)
 
     def _create_card(self) -> SolutionCard:
         """
@@ -54,20 +55,31 @@ class EvaluationReportNode(SolutionElement):
         """
         Returns the benchmark directory for the evaluation report.
         """
+        self._benchmark_dir = DataJson()[self.widget_id].get("benchmark_dir", None)
         return self._benchmark_dir
+    
+    @benchmark_dir.setter
+    def benchmark_dir(self, benchmark_dir: str):
+        """
+        Sets the benchmark directory for the evaluation report.
+        """
+        self._benchmark_dir = benchmark_dir
+        DataJson()[self.widget_id]["benchmark_dir"] = benchmark_dir
+        DataJson().send_changes()
 
     def set_benchmark_dir(self, benchmark_dir: str):
         """
         Sets the benchmark directory for the evaluation report.
         """
         if not benchmark_dir:
-            self._benchmark_dir = None
+            self.benchmark_dir = None
             self.url = ""
             self.markdown_overview = None
             if hasattr(self, "card"):
                 self.card.link = ""
             return
-        self._benchmark_dir = benchmark_dir
+        
+        self.benchmark_dir = benchmark_dir
         lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
@@ -78,7 +90,6 @@ class EvaluationReportNode(SolutionElement):
         """
         Creates and returns the tooltip for the Manual Import widget.
         """
-        # content = [Markdown(self.markdown_overview)] if self.markdown_overview else []
         return SolutionCard.Tooltip(
             description=self.description, properties=self._property_from_md()
         )
@@ -100,41 +111,6 @@ class EvaluationReportNode(SolutionElement):
         sly.fs.silent_remove("./model_evaluation_report.lnk")
 
         return sly.utils.abs_url(base_url)
-
-    # def _get_valid_benchmark_id(self, benchmark_id: int = None) -> int:
-    #     benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
-    #     benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
-    #     if not benchmarks:
-    #         sly.logger.warning("Project has no benchmark data.")
-    #         return None
-
-    #     for benchmark in benchmarks:
-    #         if benchmark_id is not None and benchmark.startswith(f"{benchmark_id}_"):
-    #             self.benchmark_dir = benchmark
-    #         template_path = benchmark + "template.vue"
-    #         if self.api.file.exists(self.team_id, template_path):
-    #             self.benchmark_dir = benchmark
-    #             return benchmark.split("_")[0]
-
-    #     return None
-
-    # def get_first_valid_benchmark(self) -> str:
-    #     """
-    #     Returns the first valid benchmark directory for the project.
-    #     """
-    #     benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
-    #     benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
-    #     if not benchmarks:
-    #         sly.logger.warning("Project has no benchmark data.")
-    #         return None
-
-    #     for benchmark in benchmarks:
-    #         template_path = f"{benchmark}/template.vue"
-    #         if self.api.file.exists(self.team_id, template_path):
-    #             return benchmark
-
-    #     sly.logger.warning("No valid benchmark found in the project.")
-    #     return None
 
     def _get_overview_markdown(self) -> str:
         """

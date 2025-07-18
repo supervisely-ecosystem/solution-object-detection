@@ -3,28 +3,26 @@ import os
 from dotenv import load_dotenv
 
 import supervisely as sly
-from supervisely.solution.scheduler import TasksScheduler
-
-LOCAL_DATA = "data.json"
-LOCAL_STATE = "state.json"
-
 
 if sly.is_development():
     load_dotenv("local.env")
+    load_dotenv("email_creds.env")
     load_dotenv(os.path.expanduser("~/supervisely.env"))
 
 api = sly.Api.from_env()
 team_id = sly.env.team_id()
+task_id = sly.env.task_id()
 workspace_id = sly.env.workspace_id()
-scheduler = TasksScheduler()
-PROJECT_NAME = "Solution_005"
-project = api.project.get_or_create(workspace_id, PROJECT_NAME)
-update_project = False
+project_id = sly.env.project_id()
+
+project = api.project.get_info_by_id(project_id)
 custom_data = project.custom_data
+
+update_project = False
 if "labeling_project" not in custom_data:
     labeling_project = api.project.create(
         workspace_id,
-        f"{PROJECT_NAME} (labeling)",
+        f"{project.name} (labeling)",
         change_name_if_conflict=True,
         description="labeling project",
     )
@@ -36,7 +34,7 @@ else:
 if "training_project" not in custom_data:
     training_project = api.project.create(
         workspace_id,
-        f"{PROJECT_NAME} (training)",
+        f"{project.name} (training)",
         change_name_if_conflict=True,
         description="training project",
     )

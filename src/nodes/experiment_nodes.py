@@ -3,6 +3,7 @@ import supervisely as sly
 from src.components import BaseDeployNode
 from src.components.compare import CompareNode
 from src.components.evaluation_report import EvaluationReportNode
+from src.components.reevaluate import ReevaluateNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
@@ -23,12 +24,13 @@ evaluation_report = EvaluationReportNode(
     x=1500,
     y=2140,
 )
-re_eval_dummy = sly.solution.LinkNode(
-    title="Re-evaluate Model",
-    description="Re-evaluate the model on the latest labeled data from the Training Project. ",
-    width=250,
+re_eval = ReevaluateNode(
+    api=g.api,
+    model_path="",
+    project_info=g.project,
     x=1300,
     y=2025,
+    tooltip_position="left",
 )
 
 compare_node = CompareNode(
@@ -71,6 +73,13 @@ deploy_node = BaseDeployNode(
     description="Deploy the trained model to the Supervisely platform for inference.",
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-deployment-unit"),
 )
+
+
+# @re_eval.on_finish
+# def on_re_eval_finished(res_dir) -> None:
+#     compare_node.evaluation_dirs.append(res_dir)
+#     if compare_node.automation.is_on:
+#         compare_node.run()
 
 
 @compare_node.on_finish

@@ -15,7 +15,6 @@ from supervisely.app.widgets import (
     Icons,
     Input,
     SolutionCard,
-    TasksHistory,
     Text,
     Widget,
 )

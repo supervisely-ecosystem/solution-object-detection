@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Union
 
 from supervisely import logger, timeit
 from supervisely.api.api import Api
@@ -12,7 +12,7 @@ from supervisely.app.widgets import (
     Dialog,
     Field,
     Icons,
-    SelectCudaDevice,
+    Switch,
     TasksHistory,
 )
 from supervisely.solution.base_node import (
@@ -60,11 +60,8 @@ class EvaluationNode(SolutionElement):
     def __init__(
         self,
         api: Api,
-        project_info: ProjectInfo,
+        project: Union[int, ProjectInfo],
         dataset_ids: Optional[list[int]] = None,
-        # title: str,
-        # description: str,
-        # width: int = 320,
         x: int = 0,
         y: int = 0,
         icon: Optional[Icons] = None,
@@ -81,13 +78,20 @@ class EvaluationNode(SolutionElement):
         super().__init__(*args, **kwargs)
 
         self.api = api
-        self.project = project_info
+        self.project = (
+            project if isinstance(project, ProjectInfo) else api.project.get_info_by_id(project)
+        )
         self.dataset_ids = dataset_ids
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()
-        self.modals = [self.task_history_modal, self.evaluation_settings_modal]
+        self.modals = [self.task_history_modal, self.settings_modal]
         self.card = self._create_card()
+
+        @self.card.click
+        def show_settings():
+            self.settings_modal.show()
+
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
         self._update_tooltip_properties()
 
@@ -111,14 +115,14 @@ class EvaluationNode(SolutionElement):
         return self._task_history_modal
 
     @property
-    def evaluation_settings_modal(self) -> Dialog:
-        if not hasattr(self, "_evaluation_settings_modal"):
-            self._evaluation_settings_modal = Dialog(
-                title="Evaluation Settings", content=self._init_eval_settings_layout(), size="tiny"
+    def settings_modal(self) -> Dialog:
+        if not hasattr(self, "_settings_modal"):
+            self._settings_modal = Dialog(
+                title="Settings", content=self._init_settings_layout(), size="tiny"
             )
-        return self._evaluation_settings_modal
+        return self._settings_modal
 
-    def _init_eval_settings_layout(self) -> Container:
+    def _init_settings_layout(self) -> Container:
         agent_selector = AgentSelector(self.project.team_id)
         agent_selector_field = Field(
             agent_selector,
@@ -128,14 +132,25 @@ class EvaluationNode(SolutionElement):
                 zmdi_class="zmdi zmdi-cloud", color_rgb=(21, 101, 192), bg_color_rgb=(227, 242, 253)
             ),
         )
-        # cuda_device = SelectCudaDevice(sort_by_free_ram=True, include_cpu_option=True)
-        self._get_agent = agent_selector.get_value
-        return Container(
-            [
-                agent_selector_field,
-                #   cuda_device
-            ]
+        automation_switch = Switch()
+        automation_field = Field(
+            automation_switch,
+            title="Enable Automation",
+            description="Enable or disable automatic model re-evaluation after training.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-settings",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
         )
+        self._get_agent = agent_selector.get_value
+
+        @automation_switch.value_changed
+        def on_automation_switch_change(value: bool):
+            self.automation_enabled = value
+            self._update_tooltip_properties()
+
+        return Container([agent_selector_field, automation_field], gap=20)
 
     @property
     def task_history_btn(self) -> Button:
@@ -174,48 +189,7 @@ class EvaluationNode(SolutionElement):
         return self._run_btn
 
     @property
-    def toggle_automation_btn(self) -> Button:
-        if not hasattr(self, "_toggle_automation_btn"):
-            self._toggle_automation_btn = Button(
-                "Enable Automation",
-                icon="zmdi zmdi-settings",
-                button_size="mini",
-                plain=True,
-                button_type="text",
-            )
-
-            @self._toggle_automation_btn.click
-            def toggle_automation():
-                self.automation_enabled = not self.automation_enabled
-                self._update_tooltip_properties()
-                if self.automation_enabled:
-                    self._toggle_automation_btn.text = "Disable Automation"
-                else:
-                    self._toggle_automation_btn.text = "Enable Automation"
-
-        return self._toggle_automation_btn
-
-    @property
-    def evaluation_settings_btn(self) -> Button:
-        if not hasattr(self, "_evaluation_settings_btn"):
-            self._evaluation_settings_btn = Button(
-                "Evaluation Settings",
-                icon="zmdi zmdi-settings",
-                button_size="mini",
-                plain=True,
-                button_type="text",
-            )
-
-            @self._evaluation_settings_btn.click
-            def show_evaluation_settings():
-                self.evaluation_settings_modal.show()
-
-        return self._evaluation_settings_btn
-
-    @property
     def model(self):
-        # if not hasattr(self, "_model"):
-        #     self._deploy_model()
         if not hasattr(self, "_model"):
             raise RuntimeError("Model is not deployed.")
         return self._model
@@ -345,8 +319,6 @@ class EvaluationNode(SolutionElement):
             description="Re-evaluate the best model on a new validation dataset.",
             content=[
                 self.run_btn,
-                self.evaluation_settings_btn,
-                self.toggle_automation_btn,
                 self.task_history_btn,
             ],
             properties=[

@@ -29,7 +29,7 @@ evaluation_report = EvaluationReportNode(
 )
 re_eval = EvaluationNode(
     api=g.api,
-    project_info=g.project,
+    project=g.project,
     x=1265,
     y=2025,
     tooltip_position="left",

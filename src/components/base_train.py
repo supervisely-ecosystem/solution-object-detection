@@ -32,18 +32,26 @@ from supervisely.solution.components.tasks_history import SolutionTasksHistory
 
 
 class TrainAutomation(Automation):
-    def __init__(self):
+    TRAIN_JOB_ID = "train_model_job"
+    check_status_job_id = "check_train_status_job"
+
+    def __init__(self, func: Callable):
+        super().__init__()
+        self.func = func
+        self.widget = self._create_widget()
+        self.job_id = self.widget.widget_id
+
+    def _create_widget(self) -> Container:
         pass
 
-    def add_task(self, task_id: int) -> bool:
-        """run scheduler tasl"""
-        pass
+    def apply(self, sec: int, job_id: str, *args) -> None:
+        self.scheduler.add_job(self.func, interval=sec, job_id=job_id, replace_existing=True, *args)
+        logger.info(f"Scheduled model comparison job with ID {job_id} every {sec} seconds.")
 
-    def apply(self, sec: int, *args) -> None:
-        self.scheduler.add_job(
-            self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
-        )
-        logger.info(f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds.")
+    def remove(self, job_id: str) -> None:
+        if self.scheduler.is_job_scheduled(job_id):
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed scheduled model comparison job with ID {job_id}.")
 
 
 class TrainTasksHistory(SolutionTasksHistory):
@@ -122,7 +130,7 @@ class BaseTrainGUI(Widget):
             cv_task_selection_disabled=True, # 1 - cv task selection
             project_selection_disabled=True, # 2 - project selection
             classes_selection_disabled=False, # 3 - classes selection
-            train_val_split_selection_disabled=False, # 4 - train/val split selection
+            train_val_split_selection_disabled=True, # 4 - train/val split selection
             model_selection_disabled=False, # 5 - model selection
             evaluation_selection_disabled=False, # 9 - evaluation selection
             speed_test_selection_disabled=False, # 9 - speed test selection
@@ -178,6 +186,7 @@ class BaseTrainNode(SolutionElement):
         self.api = api
         self.tasks_history = TrainTasksHistory(self.api, title="Train Tasks History")
         self.main_widget = self.gui_class(api=api, project=self.project_id)
+        # self.automation = TrainAutomation(self.main_widget.a)
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)

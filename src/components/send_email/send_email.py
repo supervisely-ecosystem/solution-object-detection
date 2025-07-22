@@ -4,7 +4,16 @@ import smtplib
 import ssl
 from typing import Optional
 
-from supervisely.app.widgets import Button, Container, Field, Input, TextArea, Widget
+from supervisely.app.widgets import (
+    Button,
+    Checkbox,
+    CheckboxField,
+    Container,
+    Field,
+    Input,
+    TextArea,
+    Widget,
+)
 
 SMTP_PROVIDERS = {
     "gmail.com": ("smtp.gmail.com", 587),
@@ -80,14 +89,27 @@ class SendEmail(Widget):
         self._default_subject = default_subject
         self._default_body = default_body
 
-        self._content = self._init_ui(show_body=show_body)
         super().__init__(widget_id=widget_id, file_path=__file__)
+        self._content = self._init_ui(show_body=show_body)
 
     @property
     def apply_button(self) -> Button:
         return self._apply_button
 
     def _init_ui(self, show_body: bool) -> Container:
+        self.enable_checkbox = CheckboxField(
+            title="Enable Email Notifications",
+            description="If checked, email notifications will be sent automatically.",
+            checked=False,
+        )
+
+        @self.enable_checkbox.value_changed
+        def on_checkbox_change(checked: bool):
+            if checked:
+                self.enable_settings()
+            else:
+                self.disable_settings()
+
         self._target_addresses_input = Input(
             minlength=1,
             maxlength=100,
@@ -95,7 +117,7 @@ class SendEmail(Widget):
             size="small",
             type="textarea",
         )
-        # @TODO: Maybe add icons
+
         target_addresses_field = Field(
             self._target_addresses_input,
             "Target email addresses",
@@ -103,7 +125,11 @@ class SendEmail(Widget):
         )
 
         self._subject_input = Input(
-            "", 0, 300, placeholder="Enter email subject here...", type="textarea"
+            value=self._default_subject or "Supervisely Notification",
+            minlength=0,
+            maxlength=300,
+            placeholder="Enter email subject here...",
+            type="textarea",
         )
         subject_input_field = Field(
             self._subject_input, "Email Subject", "Configure the subject of the email notification."
@@ -112,23 +138,47 @@ class SendEmail(Widget):
         self._body_input = TextArea(placeholder="Enter email body here...", rows=10, autosize=False)
         if self._default_body is not None:
             self._body_input.set_value(self._default_body)
-        if not show_body:
-            self._body_input.hide()
         body_input_field = Field(
             self._body_input,
             "Email Body",
             "Configure the body of the email notification.",
         )
+        if not show_body:
+            body_input_field.hide()
 
         self._apply_button = Button("Apply")
         return Container(
             [
+                self.enable_checkbox,
                 target_addresses_field,
                 subject_input_field,
                 body_input_field,
                 self._apply_button,
             ]
         )
+
+    @property
+    def is_email_sending_enabled(self) -> bool:
+        """
+        Returns True if email sending is enabled, False otherwise.
+        """
+        return self.enable_checkbox.is_checked()
+
+    def enable_settings(self):
+        """
+        Enables the email notification settings.
+        """
+        self._target_addresses_input.enable()
+        self._subject_input.enable()
+        self._body_input.enable()
+
+    def disable_settings(self):
+        """
+        Disables the email notification settings.
+        """
+        self._target_addresses_input.disable()
+        self._subject_input.disable()
+        self._body_input.disable()
 
     def get_target_addresses(self):
         """

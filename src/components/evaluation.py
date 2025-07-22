@@ -10,6 +10,7 @@ from supervisely.app.widgets import (
     Button,
     Container,
     Dialog,
+    FastTable,
     Field,
     Icons,
     Switch,
@@ -52,6 +53,23 @@ class EvaluationTaskHistory(TasksHistory):
         super().add_task(task)
         self.update()
 
+    @property
+    def table(self):
+        if not hasattr(self, "_tasks_table"):
+            self._tasks_table = self._create_tasks_history_table()
+
+            @self._tasks_table.cell_click
+            def on_cell_click(clicked_cell: FastTable.ClickedCell):
+                if clicked_cell.column_index == 4:  # Session ID
+                    col_idx = 4
+                else:
+                    col_idx = 0
+                self.logs.set_task_id(clicked_cell.row[col_idx])
+                logger.debug("Showing logs for task ID: %s", self.logs.get_task_id())
+                self.logs_modal.show()
+
+        return self._tasks_table
+
 
 class EvaluationNode(SolutionElement):
     APP_SLUG = "supervisely-ecosystem/model-benchmark"
@@ -85,7 +103,7 @@ class EvaluationNode(SolutionElement):
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()
-        self.modals = [self.task_history_modal, self.settings_modal]
+        self.modals = [self.task_history_modal, self.settings_modal, self.task_history.logs_modal]
         self.card = self._create_card()
 
         @self.card.click
@@ -288,10 +306,11 @@ class EvaluationNode(SolutionElement):
         session_info["modelPath"] = self._model_path
         # @TODO:
         session_info["collectionName"] = None
-        self.task_history.add_task(session_info)
 
         error = response.get("error")
         res_dir = response.get("data", {}).get("res_dir", None)
+        session_info["status"] = "Success" if not error else "Failed"
+        self.task_history.add_task(session_info)
         if error:
             logger.error(f"Error during evaluation: {error}")
         elif res_dir:

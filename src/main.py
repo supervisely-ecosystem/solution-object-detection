@@ -1,14 +1,17 @@
 import random
 from typing import Optional
 
+import supervisely as sly
+from supervisely.solution.scheduler import TasksScheduler
 
 import src.nodes as n
 import src.sly_globals as g
-import supervisely as sly
 from src.graph_builder import layout
-from supervisely.solution.scheduler import TasksScheduler
 
-app = sly.Application(layout=layout, static_dir="static")
+app = sly.Application(
+    layout=layout,
+    #   static_dir="static"
+)
 app.call_before_shutdown(TasksScheduler().shutdown)
 
 

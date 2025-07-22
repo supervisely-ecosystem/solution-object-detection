@@ -299,6 +299,10 @@ class ReevaluateNode(SolutionElement):
         )
 
     def _update_tooltip_properties(self) -> None:
+        if self.automation_enabled:
+            self.node.show_automation_badge()
+        else:
+            self.node.hide_automation_badge()
         new_props = [
             {
                 "key": "Auto model re-evaluation",

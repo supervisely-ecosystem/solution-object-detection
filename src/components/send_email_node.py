@@ -10,6 +10,8 @@ from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.sly_logger import logger
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 
+from src.components.send_email.send_email import SendEmail
+
 
 class SendEmailHistory(TasksHistory):
 
@@ -227,33 +229,8 @@ class SendEmailNode(SolutionElement):
             properties=[],
         )
 
-    def _get_buttons(self):
-        if not hasattr(self, "_settings_btn"):
-            self._settings_btn = Button(
-                "Notifications Settings",
-                icon="zmdi zmdi-settings",
-                plain=True,
-                button_type="text",
-                button_size="mini",
-            )
-
-            @self._settings_btn.click
-            def show_settings_modal():
-                self.settings_modal.show()
-
-        if not hasattr(self, "_automate_btn"):
-            self._automate_btn = Button(
-                "Automate",
-                icon="zmdi zmdi-settings",
-                button_size="mini",
-                plain=True,
-                button_type="text",
-            )
-
-            @self._automate_btn.click
-            def show_automation_modal():
-                self.automation.modal.show()
-
+    @property
+    def history_btn(self) -> Button:
         if not hasattr(self, "_history_btn"):
             self._history_btn = Button(
                 "Notification History",
@@ -267,11 +244,7 @@ class SendEmailNode(SolutionElement):
             def show_tasks_history():
                 self.tasks_modal.show()
 
-        return [
-            self._settings_btn,
-            self._automate_btn,
-            self._history_btn,
-        ]
+        return self._history_btn
 
     @property
     def is_email_sending_enabled(self) -> bool:

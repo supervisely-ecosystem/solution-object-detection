@@ -5,7 +5,16 @@ from typing import Any, Dict, Literal, Optional
 from supervisely import logger, timeit
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
-from supervisely.app.widgets import Button, Dialog, Icons, TasksHistory
+from supervisely.app.widgets import (
+    AgentSelector,
+    Button,
+    Container,
+    Dialog,
+    Field,
+    Icons,
+    SelectCudaDevice,
+    TasksHistory,
+)
 from supervisely.solution.base_node import (
     SolutionCard,
     SolutionCardNode,
@@ -13,7 +22,7 @@ from supervisely.solution.base_node import (
 )
 
 
-class ReevaluateTaskHistory(TasksHistory):
+class EvaluationTaskHistory(TasksHistory):
     def __init__(
         self,
         widget_id: str = None,
@@ -44,19 +53,18 @@ class ReevaluateTaskHistory(TasksHistory):
         self.update()
 
 
-class ReevaluateNode(SolutionElement):
+class EvaluationNode(SolutionElement):
     APP_SLUG = "supervisely-ecosystem/model-benchmark"
     EVALUATION_ENDPOINT = "run_evaluation"
 
     def __init__(
         self,
         api: Api,
-        model_path: str,
         project_info: ProjectInfo,
         dataset_ids: Optional[list[int]] = None,
         # title: str,
         # description: str,
-        # width: int = 400,
+        # width: int = 320,
         x: int = 0,
         y: int = 0,
         icon: Optional[Icons] = None,
@@ -65,20 +73,23 @@ class ReevaluateNode(SolutionElement):
         **kwargs,
     ):
         self.tooltip_position = tooltip_position
-        self.icon = icon
+        self.icon = icon or Icons(
+            class_name="zmdi zmdi-assignment-check",
+            color="#1976D2",
+            bg_color="#E3F2FD",
+        )
         super().__init__(*args, **kwargs)
 
         self.api = api
         self.project = project_info
         self.dataset_ids = dataset_ids
-        self.model_path = model_path
-        self.agent_id = self._get_agent()
         self._finish_callbacks = []
 
-        self.modals = [self.task_history_modal]
+        self.task_history = EvaluationTaskHistory()
+        self.modals = [self.task_history_modal, self.evaluation_settings_modal]
         self.card = self._create_card()
-        self._update_tooltip_properties()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
+        self._update_tooltip_properties()
 
     @property
     def automation_enabled(self) -> bool:
@@ -91,12 +102,6 @@ class ReevaluateNode(SolutionElement):
         self._automation_enabled = value
 
     @property
-    def task_history(self) -> ReevaluateTaskHistory:
-        if not hasattr(self, "_task_history"):
-            self._task_history = ReevaluateTaskHistory()
-        return self._task_history
-
-    @property
     def task_history_modal(self) -> Dialog:
         if not hasattr(self, "_task_history_modal"):
             self._task_history_modal = Dialog(
@@ -104,6 +109,33 @@ class ReevaluateNode(SolutionElement):
                 content=self.task_history,
             )
         return self._task_history_modal
+
+    @property
+    def evaluation_settings_modal(self) -> Dialog:
+        if not hasattr(self, "_evaluation_settings_modal"):
+            self._evaluation_settings_modal = Dialog(
+                title="Evaluation Settings", content=self._init_eval_settings_layout(), size="tiny"
+            )
+        return self._evaluation_settings_modal
+
+    def _init_eval_settings_layout(self) -> Container:
+        agent_selector = AgentSelector(self.project.team_id)
+        agent_selector_field = Field(
+            agent_selector,
+            title="Select Agent for Evaluation",
+            description="Select the agent to deploy the model on.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-cloud", color_rgb=(21, 101, 192), bg_color_rgb=(227, 242, 253)
+            ),
+        )
+        # cuda_device = SelectCudaDevice(sort_by_free_ram=True, include_cpu_option=True)
+        self._get_agent = agent_selector.get_value
+        return Container(
+            [
+                agent_selector_field,
+                #   cuda_device
+            ]
+        )
 
     @property
     def task_history_btn(self) -> Button:
@@ -164,6 +196,23 @@ class ReevaluateNode(SolutionElement):
         return self._toggle_automation_btn
 
     @property
+    def evaluation_settings_btn(self) -> Button:
+        if not hasattr(self, "_evaluation_settings_btn"):
+            self._evaluation_settings_btn = Button(
+                "Evaluation Settings",
+                icon="zmdi zmdi-settings",
+                button_size="mini",
+                plain=True,
+                button_type="text",
+            )
+
+            @self._evaluation_settings_btn.click
+            def show_evaluation_settings():
+                self.evaluation_settings_modal.show()
+
+        return self._evaluation_settings_btn
+
+    @property
     def model(self):
         # if not hasattr(self, "_model"):
         #     self._deploy_model()
@@ -175,10 +224,10 @@ class ReevaluateNode(SolutionElement):
     def _deploy_model(self):
         try:
             self._model = self.api.nn.deploy(
-                model=self.model_path,
+                model=self._model_path,
                 device="cpu",  # for now
                 workspace_id=self.project.workspace_id,
-                agent_id=self.agent_id,
+                agent_id=self._get_agent(),
                 task_name="Solution: " + str(self.api.task_id),
             )
         except TimeoutError as e:
@@ -190,9 +239,9 @@ class ReevaluateNode(SolutionElement):
             if match:
                 task_id = int(match.group(1))
                 self.api.task.stop(task_id)
-                logger.warning(f"Deployment task (id: {task_id}) timed out after 100 seconds.")
+                logger.error(f"Deployment task (id: {task_id}) timed out after 100 seconds.")
             else:
-                logger.warning(f"Model deployment timed out: {msg}")
+                logger.error(f"Model deployment timed out: {msg}")
             raise
 
     @property
@@ -207,7 +256,7 @@ class ReevaluateNode(SolutionElement):
     def _start_evaluator_session(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
         task_info_json = self.api.task.start(
-            agent_id=self.agent_id,
+            agent_id=self._get_agent(),
             workspace_id=self.project.workspace_id,
             description="Solution: " + str(self.api.task_id),
             module_id=module_id,
@@ -229,6 +278,11 @@ class ReevaluateNode(SolutionElement):
         self._eval_session_info = task_info_json
 
     def run(self):
+        if not hasattr(self, "_model_path"):
+            logger.warning(
+                "Model path is not set. Please set the model path before running the evaluation."
+            )
+            return
         if not hasattr(self, "_eval_session_info") and not hasattr(self, "_model"):
             # create threads for deployment and evaluation sessions and start them concurrently
             deploy_thread = threading.Thread(target=self._deploy_model)
@@ -240,9 +294,8 @@ class ReevaluateNode(SolutionElement):
             deploy_thread.join()
             eval_thread.join()
 
-        # start the evaluation request in a thread
-        thread = threading.Thread(target=self._send_evaluation_request)
-        thread.daemon = True
+        # send the evaluation request in a new thread
+        thread = threading.Thread(target=self._send_evaluation_request, daemon=True)
         thread.start()
 
     def _send_evaluation_request(self):
@@ -258,7 +311,7 @@ class ReevaluateNode(SolutionElement):
         )
         session_info["taskId"] = self.eval_session_info["id"]
         session_info["sessionId"] = self.model.task_id
-        session_info["modelPath"] = self.model_path
+        session_info["modelPath"] = self._model_path
         # @TODO:
         session_info["collectionName"] = None
         self.task_history.add_task(session_info)
@@ -275,6 +328,9 @@ class ReevaluateNode(SolutionElement):
         self._finish_callbacks.append(fn)
         return fn
 
+    def set_model_path(self, model_path: str):
+        self._model_path = model_path
+
     def _create_card(self) -> SolutionCard:
         return SolutionCard(
             title="Re-evaluate on new validation dataset",
@@ -287,7 +343,12 @@ class ReevaluateNode(SolutionElement):
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         return SolutionCard.Tooltip(
             description="Re-evaluate the best model on a new validation dataset.",
-            content=[self.run_btn, self.toggle_automation_btn, self.task_history_btn],
+            content=[
+                self.run_btn,
+                self.evaluation_settings_btn,
+                self.toggle_automation_btn,
+                self.task_history_btn,
+            ],
             properties=[
                 {
                     "key": "Auto model re-evaluation",
@@ -313,6 +374,3 @@ class ReevaluateNode(SolutionElement):
         ]
         for prop in new_props:
             self.card.update_property(**prop)
-
-    def _get_agent(self) -> int:
-        return self.api.nn._deploy_api._find_agent(self.project.team_id)

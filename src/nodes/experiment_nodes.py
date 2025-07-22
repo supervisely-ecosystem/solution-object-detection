@@ -1,10 +1,11 @@
 import supervisely as sly
+
 import src.sly_globals as g
 from src.components import BaseDeployNode
 from src.components.compare import CompareNode
 from src.components.custom_model import DeployCustomModel
+from src.components.evaluation import EvaluationNode
 from src.components.evaluation_report import EvaluationReportNode
-from src.components.reevaluate import ReevaluateNode
 from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
@@ -26,13 +27,15 @@ evaluation_report = EvaluationReportNode(
     x=1500,
     y=2140,
 )
-re_eval = ReevaluateNode(
+re_eval = EvaluationNode(
     api=g.api,
-    model_path="/mmsegmentation/2266_coffee-leaf-biotic-stress/checkpoints/data/best_aAcc_epoch_18.pth",
     project_info=g.project,
     x=1265,
     y=2025,
     tooltip_position="left",
+)
+re_eval.set_model_path(
+    "/mmsegmentation/2266_coffee-leaf-biotic-stress/checkpoints/data/best_aAcc_epoch_18.pth"
 )
 
 compare_node = CompareNode(

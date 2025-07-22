@@ -112,22 +112,22 @@ class BaseTrainGUI(Widget):
             team_id=self.team_id,
             workspace_id=self.workspace_id,
             project_id=self.project.id,
-            step=3,  # 3 - classes selection
+            step=3, # 3 - classes selection
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,
             selected_frameworks=self.frameworks,
-            train_val_split_mode=split_mode,  # only collections?
+            train_val_split_mode=split_mode, # only collections?
             train_collections=train_collections,
             val_collections=val_collections,
             # gui selectors disabled
-            cv_task_selection_disabled=True,  # 1 - cv task selection
-            project_selection_disabled=True,  # 2 - project selection
-            classes_selection_disabled=False,  # 3 - classes selection
-            train_val_split_selection_disabled=True,  # 4 - train/val split selection
-            model_selection_disabled=False,  # 5 - model selection
-            evaluation_selection_disabled=False,  # 9 - evaluation selection
-            speed_test_selection_disabled=False,  # 9 - speed test selection
+            cv_task_selection_disabled=True, # 1 - cv task selection
+            project_selection_disabled=True, # 2 - project selection
+            classes_selection_disabled=False, # 3 - classes selection
+            train_val_split_selection_disabled=True, # 4 - train/val split selection
+            model_selection_disabled=False, # 5 - model selection
+            evaluation_selection_disabled=False, # 9 - evaluation selection
+            speed_test_selection_disabled=False, # 9 - speed test selection
             framework_selection_disabled=self.frameworks is not None,
             architecture_selection_disabled=True,
         )

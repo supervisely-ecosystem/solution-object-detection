@@ -2,7 +2,7 @@ import threading
 import time
 from typing import Any, Dict, Literal, Optional
 
-from supervisely import logger
+from supervisely import logger, timeit
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
 from supervisely.app.widgets import Button, Dialog, Icons, TasksHistory
@@ -165,30 +165,51 @@ class ReevaluateNode(SolutionElement):
 
     @property
     def model(self):
+        # if not hasattr(self, "_model"):
+        #     self._deploy_model()
         if not hasattr(self, "_model"):
-            self._deploy_model()
+            raise RuntimeError("Model is not deployed.")
         return self._model
 
+    @timeit
     def _deploy_model(self):
-        self._model = self.api.nn.deploy(
-            model="",
-            agent_id=self.agent_id,
-            workspace_id=self.project.workspace_id,
-            description="Solution: " + self.api.task_id,
-        )
+        try:
+            self._model = self.api.nn.deploy(
+                model=self.model_path,
+                device="cpu",  # for now
+                workspace_id=self.project.workspace_id,
+                agent_id=self.agent_id,
+                task_name="Solution: " + str(self.api.task_id),
+            )
+        except TimeoutError as e:
+            # TimeoutError: Task 48446 is not ready for API calls after 100 seconds.
+            import re
+
+            msg = str(e)
+            match = re.search(r"Task (\d+) is not ready", msg)
+            if match:
+                task_id = int(match.group(1))
+                self.api.task.stop(task_id)
+                logger.warning(f"Deployment task (id: {task_id}) timed out after 100 seconds.")
+            else:
+                logger.warning(f"Model deployment timed out: {msg}")
+            raise
 
     @property
     def eval_session_info(self) -> int:
+        # if not hasattr(self, "_eval_session_info"):
+        #     self._start_evaluator_session()
         if not hasattr(self, "_eval_session_info"):
-            self._start_evaluator_session()
+            raise RuntimeError("Evaluation session info is not available.")
         return self._eval_session_info
 
+    @timeit
     def _start_evaluator_session(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
         task_info_json = self.api.task.start(
             agent_id=self.agent_id,
             workspace_id=self.project.workspace_id,
-            description=f"Solution: {self.api.task_id}",
+            description="Solution: " + str(self.api.task_id),
             module_id=module_id,
         )
         task_id = task_info_json["id"]
@@ -197,9 +218,14 @@ class ReevaluateNode(SolutionElement):
             time.sleep(5)
             if time.time() - current_time > 300:
                 break
-        ready = self.api.app.wait_until_ready_for_api_calls(task_id)
+        ready = self.api.app.wait_until_ready_for_api_calls(
+            task_id=task_id, attempts=50, attempt_delay_sec=2
+        )
         if not ready:
-            raise RuntimeError(f"Task {task_id} did not start successfully.")
+            self.api.task.stop(task_id)
+            raise RuntimeError(
+                f"Evaluator session (task id: {task_id}) did not start successfully after 100 seconds."
+            )
         self._eval_session_info = task_info_json
 
     def run(self):
@@ -235,13 +261,15 @@ class ReevaluateNode(SolutionElement):
         session_info["modelPath"] = self.model_path
         # @TODO:
         session_info["collectionName"] = None
-        if response.error:
-            logger.error(f"Error during evaluation: {response.error}")
-        else:
-            res_dir = response.data.get("res_dir", "")
         self.task_history.add_task(session_info)
-        for cb in self._finish_callbacks:
-            cb(res_dir)
+
+        error = response.get("error")
+        res_dir = response.get("data", {}).get("res_dir", None)
+        if error:
+            logger.error(f"Error during evaluation: {error}")
+        elif res_dir:
+            for cb in self._finish_callbacks:
+                cb(res_dir)
 
     def on_finish(self, fn):
         self._finish_callbacks.append(fn)

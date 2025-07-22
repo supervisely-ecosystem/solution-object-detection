@@ -27,7 +27,7 @@ evaluation_report = EvaluationReportNode(
 )
 re_eval = ReevaluateNode(
     api=g.api,
-    model_path="",
+    model_path="/mmsegmentation/2266_coffee-leaf-biotic-stress/checkpoints/data/best_aAcc_epoch_18.pth",
     project_info=g.project,
     x=1265,
     y=2025,

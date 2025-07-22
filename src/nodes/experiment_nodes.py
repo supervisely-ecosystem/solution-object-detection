@@ -1,7 +1,7 @@
 import src.sly_globals as g
 import supervisely as sly
-from src.components import BaseDeployNode
 from src.components.compare import CompareNode
+from src.components.custom_model import DeployCustomModel
 from src.components.evaluation_report import EvaluationReportNode
 from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
@@ -64,24 +64,20 @@ comparison_report = sly.solution.LinkNode(
 comparison_report.node.disable()
 
 redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
-
-deploy_node = BaseDeployNode(
-    x=1000,
-    y=470,
-    api=g.api,
-    title="Deploy Model",
-    description="Deploy the trained model to the Supervisely platform for inference.",
-    icon=sly.app.widgets.Icons(class_name="zmdi zmdi-deployment-unit"),
-)
+deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
 
 
 @compare_node.on_finish
 def on_compare_finished(res_dir, res_link) -> None:
     comparison_report.card.link = res_link
     comparison_report.node.enable()
-    url = sly.utils.abs_url(res_link)
-    message = f"Comparison report is ready: <a href='{url}' target='_blank'>View Report</a>"
-    send_email.run(text=message)
+    if send_email.is_email_sending_enabled:
+        url = sly.utils.abs_url(res_link)
+        message = f"Comparison report is ready: <a href='{url}' target='_blank'>View Report</a>"
+        send_email.run(text=message)
 
-    if compare_node.is_new_model_better("mAP"):
-        deploy_node.deploy(compare_node.result_best_checkpoint)
+    if redeploy_settings.is_enabled() and compare_node.is_new_model_better("mAP"):
+        agent_id = redeploy_settings.get_agent_id()
+        deploy_custom_model_node.deploy(
+            model=compare_node.result_best_checkpoint, agent_id=agent_id
+        )

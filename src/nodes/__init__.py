@@ -1,7 +1,7 @@
 from src.nodes.experiment_nodes import (
     compare_node,
     comparison_report,
-    deploy_node,
+    deploy_custom_model_node,
     evaluation_report,
     experiments,
     re_eval_dummy,

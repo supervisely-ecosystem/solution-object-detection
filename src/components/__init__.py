@@ -5,3 +5,4 @@ from .send_email_node import SendEmailNode
 from .base_deploy import BaseDeployNode
 from .base_train import BaseTrainNode
 from .redeploy_settings import RedeploySettingsNode
+from .custom_model import DeployCustomModel

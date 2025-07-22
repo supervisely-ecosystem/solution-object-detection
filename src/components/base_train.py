@@ -33,19 +33,16 @@ from supervisely.solution.components.tasks_history import SolutionTasksHistory
 
 class TrainAutomation(Automation):
     TRAIN_JOB_ID = "train_model_job"
-    check_status_job_id = "check_train_status_job"
+    CHECK_STATUS_JOB_ID = "check_train_status_job"
 
-    def __init__(self, func: Callable):
+    def __init__(self):
         super().__init__()
-        self.func = func
-        self.widget = self._create_widget()
-        self.job_id = self.widget.widget_id
 
     def _create_widget(self) -> Container:
         pass
 
-    def apply(self, sec: int, job_id: str, *args) -> None:
-        self.scheduler.add_job(self.func, interval=sec, job_id=job_id, replace_existing=True, *args)
+    def apply(self, func: Callable, sec: int, job_id: str, *args) -> None:
+        self.scheduler.add_job(func, interval=sec, job_id=job_id, replace_existing=True, *args)
         logger.info(f"Scheduled model comparison job with ID {job_id} every {sec} seconds.")
 
     def remove(self, job_id: str) -> None:
@@ -142,6 +139,10 @@ class BaseTrainGUI(Widget):
         def _on_visible_changed(visible: bool):
             print(f"NewExperiment visibility changed: {visible}")
 
+        # @content.app_started
+        # def _on_app_started(app_id: int, model_id: int, task_id: int):
+        #     print(f"NewExperiment app started: app_id={app_id}, model_id={model_id}, task_id={task_id}")
+
         return content
 
     def _get_train_val_collections(self) -> Tuple[List[int], List[int]]:
@@ -186,7 +187,7 @@ class BaseTrainNode(SolutionElement):
         self.api = api
         self.tasks_history = TrainTasksHistory(self.api, title="Train Tasks History")
         self.main_widget = self.gui_class(api=api, project=self.project_id)
-        # self.automation = TrainAutomation(self.main_widget.a)
+        self.automation = TrainAutomation()
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
@@ -194,6 +195,7 @@ class BaseTrainNode(SolutionElement):
             self.tasks_history.tasks_modal,
             self.tasks_history.logs_modal,
             self.main_widget.content,
+            self.automation_modal,
         ]
         self._train_started_cb = []
         self._train_finished_cb = []
@@ -203,6 +205,17 @@ class BaseTrainNode(SolutionElement):
         def _on_card_click():
             # if not self.main_widget.content.visible:
             self.main_widget.content.visible = True
+
+        @self.main_widget.content.app_started
+        def _on_app_started(app_id: int, model_id: int, task_id: int):
+            self.automation.apply(self._check_train_progress, 10, self.automation.CHECK_STATUS_JOB_ID, app_id, model_id, task_id)
+
+    def _check_train_progress(self, task_id: int):
+        # if app starts
+        self.card.update_badge_by_key(key="In progress", label="Training", badge_type="info")
+        
+        # if app failed
+        # self.card.remove_badge_by_key("Training")
 
     def _create_card(self) -> SolutionCard:
         return SolutionCard(
@@ -216,7 +229,7 @@ class BaseTrainNode(SolutionElement):
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         return SolutionCard.Tooltip(
             description=self.description,
-            content=[self.tasks_button, self.open_session_button],
+            content=[self.tasks_button, self.open_session_button, self.automation_button],
         )
 
     @property
@@ -313,3 +326,48 @@ class BaseTrainNode(SolutionElement):
         """
         # todo: Implement the logic to check train task status.
         pass
+
+    # Automation btn
+    # @property
+    # def train_badge(self):
+    #     return SolutionCard.Badge(
+    #         label="Training:",
+    #         on_hover="in progress",
+    #         badge_type="success",
+    #         plain=True,
+    #     )
+    
+    @property
+    def automation_modal(self):
+        if not hasattr(self, "_automation_modal"):
+            self._automation_modal = self._create_automation_modal()
+        return self._automation_modal
+    
+    @property
+    def automation_button(self):
+        if not hasattr(self, "_automation_button"):
+            self._automation_button = self._create_automation_button()
+        return self._automation_button
+    
+    def _create_automation_button(self):
+        btn = Button(
+            "Automate training",
+            icon="zmdi zmdi-flash-auto",
+            button_size="mini",
+            plain=True,
+            button_type="text",
+        )
+
+        @btn.click
+        def _show_automate_dialog():
+            self.automation_modal.show()
+
+        return btn
+    
+    def _create_automation_modal(self):
+        return Dialog(
+            title="Automate Training",
+            content=Text("ABCD"), # self.main_widget.content,
+            size="tiny",
+        )
+    # -------------------------------------- #

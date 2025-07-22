@@ -29,7 +29,6 @@ graph_builder.add_node(n.send_email)
 graph_builder.add_node(n.comparison_report)
 graph_builder.add_node(n.redeploy_settings)
 graph_builder.add_node(n.deploy_custom_model_node)
-graph_builder.add_node(n.train_node)
 
 # * Add edges between nodes
 graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")

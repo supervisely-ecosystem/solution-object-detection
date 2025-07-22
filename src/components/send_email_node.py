@@ -4,58 +4,11 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 from supervisely._utils import is_development
 from supervisely.api.api import Api
 from supervisely.app.content import DataJson
-from supervisely.app.widgets import (
-    Button,
-    CheckboxField,
-    Container,
-    Icons,
-    SolutionCard,
-)
+from supervisely.app.widgets import Button, Icons, SolutionCard
 from supervisely.app.widgets.dialog.dialog import Dialog
 from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.sly_logger import logger
-from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
-
-from src.components.send_email.send_email import SendEmail
-
-
-class SendEmailAutomation(Automation):
-
-    def __init__(self, func: Callable):
-        super().__init__()
-        self.func = func
-        self.widget = self._create_widget()
-        self.widget_id = self.widget.widget_id
-        self.job_id = self.widget.widget_id
-        self.modals = [self.modal]
-
-    def _create_widget(self) -> Container:
-        checkbox = CheckboxField(
-            title="After Comparison",
-            description="Enable to send an email after each comparison.",
-            checked=False,
-        )
-        self.apply_button = Button("Apply")
-        self.is_email_sending_enabled = lambda: checkbox.is_checked()
-
-        return Container([checkbox, self.apply_button])
-
-    @property
-    def modal(self) -> Dialog:
-        """
-        Returns the automation modal dialog.
-        """
-        if not hasattr(self, "_automation_modal"):
-            self._automation_modal = Dialog("Automation Settings", self.widget, "tiny")
-        return self._automation_modal
-
-    def save(self) -> None:
-        """
-        Save the current state of the automation settings.
-        """
-        DataJson()[self.widget_id]["is_email_sending_enabled"] = self.is_email_sending_enabled()
-        DataJson().send_changes()
-        logger.info("Automation settings saved.")
+from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 
 
 class SendEmailHistory(TasksHistory):
@@ -83,13 +36,14 @@ class SendEmailHistory(TasksHistory):
             """
             Convert the notification history to a JSON serializable format.
             """
-            return {
-                "created_at": self.created_at,
-                "sent_to": (
-                    ", ".join(self.sent_to) if isinstance(self.sent_to, list) else self.sent_to
-                ),
-                "status": self.status,
+            res = {
+                "sent_to": self.sent_to if isinstance(self.sent_to, list) else [self.sent_to],
             }
+            if self.status:
+                res["status"] = self.status
+            if self.created_at:
+                res["created_at"] = self.created_at
+            return res
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -188,7 +142,6 @@ class SendEmailNode(SolutionElement):
         )
         self.task_history = SendEmailHistory()
         self.tasks_modal = Dialog(title="Notification History", content=self.task_history)
-        self.automation = SendEmailAutomation(self.run)
 
         if is_development():
             self._debug_add_dummy_notification()  # For debugging purposes, delete in production
@@ -198,19 +151,17 @@ class SendEmailNode(SolutionElement):
 
         self.modals = [
             self.settings_modal,
-            self.automation.modal,
             self.tasks_modal,
         ]
-
-        @self.automation.apply_button.click
-        def apply_automation_settings():
-            self.automation.modal.hide()
-            self.automation.save()
-            self._update_properties()
 
         @self.main_widget.apply_button.click
         def apply_settings_cb():
             self.settings_modal.hide()
+            self._update_properties()
+
+        @self.card.click
+        def on_card_click():
+            self.settings_modal.show()
 
     def _debug_add_dummy_notification(self):
         """
@@ -234,9 +185,9 @@ class SendEmailNode(SolutionElement):
         """
         Runs the SendEmailNode, sending an email with the configured settings.
         """
-        self.automation.save()
         notification = SendEmailHistory.Item(self.main_widget.get_target_addresses())
         n_idx = self.task_history.add_task(notification)
+        self._update_properties()
         try:
             message = self.main_widget.get_body()
             if text:
@@ -271,8 +222,8 @@ class SendEmailNode(SolutionElement):
         Creates and returns the tooltip for the SendEmailNode.
         """
         return SolutionCard.Tooltip(
-            description="Send email notifications to specified addresses.",
-            content=self._get_buttons(),
+            description="Automatically send email notifications after each model comparison. You can configure the recipients and subject of the email.",
+            content=[self.history_btn],
             properties=[],
         )
 
@@ -327,7 +278,7 @@ class SendEmailNode(SolutionElement):
         """
         Returns whether the email should be sent after each comparison.
         """
-        return self.automation.is_email_sending_enabled()
+        return self.main_widget.is_email_sending_enabled
 
     def _update_properties(self):
         if self.is_email_sending_enabled:

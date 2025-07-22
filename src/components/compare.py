@@ -267,22 +267,8 @@ class CompareNode(SolutionElement):
         )
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
-        properties = [
-            # {
-            #     "key": "Best model",
-            #     "value": "Unknown",
-            #     "highlight": True,
-            #     "link": False,
-            # },
-            {
-                "key": "Re-deploy Best model automatically",
-                "value": "✖",
-                "highlight": False,
-                "link": False,
-            },
-        ]
         return SolutionCard.Tooltip(
-            description=self.description, content=self._get_buttons(), properties=properties
+            description=self.description, content=self._get_buttons()
         )
 
     def _get_buttons(self):
@@ -371,6 +357,7 @@ class CompareNode(SolutionElement):
             return
         try:
             task_info = self.run_evaluator_session()
+            task_info["evaluation_dirs"] = self.evaluation_dirs
             if task_info is None:
                 task_info["status"] = self.api.task.Status.ERROR
                 self.tasks_history.add_task(task_info)
@@ -379,7 +366,6 @@ class CompareNode(SolutionElement):
             response = self.api.task.send_request(
                 task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.evaluation_dirs}
             )
-            task_info["evaluation_dirs"] = self.evaluation_dirs
             if "error" in response:
                 task_info["status"] = self.api.task.Status.ERROR
                 self.tasks_history.add_task(task_info)
@@ -428,22 +414,7 @@ class CompareNode(SolutionElement):
         return base_url
 
     def _update_properties(self):
-        new_propetries = [
-            # {
-            #     "key": "Best model",
-            #     "value": self.result_best_checkpoint or "Unknown",
-            #     "highlight": True,
-            #     "link": False,
-            # },
-            {
-                "key": "Re-deploy Best model automatically",
-                "value": "✔️" if self.is_automated else "✖",
-                "highlight": False,
-                "link": False,
-            },
-        ]
-        for prop in new_propetries:
-            self.card.update_property(**prop)
+        pass
 
     def is_new_model_better(self, primary_metric: str) -> bool:
         """

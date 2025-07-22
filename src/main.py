@@ -8,10 +8,7 @@ import src.nodes as n
 import src.sly_globals as g
 from src.graph_builder import layout
 
-app = sly.Application(
-    layout=layout,
-    #   static_dir="static"
-)
+app = sly.Application(layout=layout)
 app.call_before_shutdown(TasksScheduler().shutdown)
 
 

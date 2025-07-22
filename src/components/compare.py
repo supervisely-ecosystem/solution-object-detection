@@ -309,7 +309,11 @@ class CompareNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._automate_btn.click(self.automation.modal.show)
+
+            @self._automate_btn.click
+            def show_automation_modal():
+                self.automation_modal.show()
+
         if not hasattr(self, "_tasks_history_btn"):
             self._tasks_history_btn = Button(
                 "Tasks History",
@@ -318,7 +322,11 @@ class CompareNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._tasks_history_btn.click(self.tasks_modal.show)
+
+            @self._tasks_history_btn.click
+            def show_tasks_history():
+                self.tasks_modal.show()
+
         return [
             self._run_btn,
             self._automate_btn,

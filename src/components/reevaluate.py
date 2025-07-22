@@ -109,13 +109,16 @@ class ReevaluateNode(SolutionElement):
     def task_history_btn(self) -> Button:
         if not hasattr(self, "_task_history_btn"):
             self._task_history_btn = Button(
-                "Task History",
-                icon=Icons("zmdi zmdi-history"),
+                "Tasks History",
+                icon="zmdi zmdi-format-list-bulleted",
+                button_size="mini",
+                plain=True,
+                button_type="text",
             )
 
             @self._task_history_btn.click
             def show_task_history():
-                self.task_history.show()
+                self.task_history_modal.show()
 
         return self._task_history_btn
 
@@ -124,7 +127,10 @@ class ReevaluateNode(SolutionElement):
         if not hasattr(self, "_run_btn"):
             self._run_btn = Button(
                 "Run",
-                icon=Icons("zmdi zmdi-play"),
+                icon="zmdi zmdi-play",
+                plain=True,
+                button_type="text",
+                button_size="mini",
             )
 
             @self._run_btn.click
@@ -140,7 +146,10 @@ class ReevaluateNode(SolutionElement):
         if not hasattr(self, "_toggle_automation_btn"):
             self._toggle_automation_btn = Button(
                 "Enable Automation",
-                icon=Icons("zmdi zmdi-automation"),
+                icon="zmdi zmdi-settings",
+                button_size="mini",
+                plain=True,
+                button_type="text",
             )
 
             @self._toggle_automation_btn.click
@@ -148,9 +157,9 @@ class ReevaluateNode(SolutionElement):
                 self.automation_enabled = not self.automation_enabled
                 self._update_tooltip_properties()
                 if self.automation_enabled:
-                    self._toggle_automation_btn.text("Disable Automation")
+                    self._toggle_automation_btn.text = "Disable Automation"
                 else:
-                    self._toggle_automation_btn.text("Enable Automation")
+                    self._toggle_automation_btn.text = "Enable Automation"
 
         return self._toggle_automation_btn
 
@@ -243,7 +252,7 @@ class ReevaluateNode(SolutionElement):
             title="Re-evaluate on new validation dataset",
             tooltip=self._create_tooltip(),
             tooltip_position=self.tooltip_position,
-            width=400,
+            width=320,
             icon=self.icon,
         )
 
@@ -253,7 +262,7 @@ class ReevaluateNode(SolutionElement):
             content=[self.run_btn, self.toggle_automation_btn, self.task_history_btn],
             properties=[
                 {
-                    "key": "Re-evaluate models automatically",
+                    "key": "Auto model re-evaluation",
                     "value": "disabled" if not self.automation_enabled else "enabled",
                     "highlight": True,
                     "link": False,
@@ -264,7 +273,7 @@ class ReevaluateNode(SolutionElement):
     def _update_tooltip_properties(self) -> None:
         new_props = [
             {
-                "key": "Re-evaluate models automatically",
+                "key": "Auto model re-evaluation",
                 "value": "disabled" if not self.automation_enabled else "enabled",
                 "highlight": True,
                 "link": False,

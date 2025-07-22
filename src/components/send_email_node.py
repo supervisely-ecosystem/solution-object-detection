@@ -1,7 +1,6 @@
 import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-from src.components.send_email.send_email import SendEmail
 from supervisely._utils import is_development
 from supervisely.api.api import Api
 from supervisely.app.content import DataJson
@@ -16,6 +15,8 @@ from supervisely.app.widgets.dialog.dialog import Dialog
 from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
 from supervisely.sly_logger import logger
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
+
+from src.components.send_email.send_email import SendEmail
 
 
 class SendEmailAutomation(Automation):
@@ -284,7 +285,11 @@ class SendEmailNode(SolutionElement):
                 button_type="text",
                 button_size="mini",
             )
-            self._settings_btn.click(self.settings_modal.show)
+
+            @self._settings_btn.click
+            def show_settings_modal():
+                self.settings_modal.show()
+
         if not hasattr(self, "_automate_btn"):
             self._automate_btn = Button(
                 "Automate",
@@ -293,16 +298,24 @@ class SendEmailNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._automate_btn.click(self.automation.modal.show)
+
+            @self._automate_btn.click
+            def show_automation_modal():
+                self.automation.modal.show()
+
         if not hasattr(self, "_history_btn"):
             self._history_btn = Button(
                 "Notification History",
-                icon="zmdi zmdi-format-subject",
+                icon="zmdi zmdi-format-list-bulleted",
                 plain=True,
                 button_type="text",
                 button_size="mini",
             )
-            self._history_btn.click(self.tasks_modal.show)
+
+            @self._history_btn.click
+            def show_tasks_history():
+                self.tasks_modal.show()
+
         return [
             self._settings_btn,
             self._automate_btn,

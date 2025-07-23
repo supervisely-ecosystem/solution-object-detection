@@ -195,7 +195,7 @@ class BaseTrainNode(SolutionElement):
             self.tasks_history.tasks_modal,
             self.tasks_history.logs_modal,
             self.main_widget.content,
-            self.automation_modal,
+            # self.automation_modal,
         ]
         self._train_started_cb = []
         self._train_finished_cb = []
@@ -218,9 +218,10 @@ class BaseTrainNode(SolutionElement):
 
     def _check_train_progress(self, task_id: int):
         # if app starts
-        train_status = self.api.task.send_request(task_id, "train_status", {})
-        print(f"Train status: {train_status}")
-        self.card.update_badge_by_key(key="In progress", label=train_status, badge_type="info")
+        #@ TODO: get train status from the task (fix send request on web progress status message)
+        # train_status = self.api.task.send_request(task_id, "train_status", {})
+        # print(f"Train status: {train_status}")
+        self.card.update_badge_by_key(key="In progress", label="Training", badge_type="info")
         
         # if app failed
         # self.card.remove_badge_by_key("Training")

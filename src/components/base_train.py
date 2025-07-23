@@ -139,10 +139,6 @@ class BaseTrainGUI(Widget):
         def _on_visible_changed(visible: bool):
             print(f"NewExperiment visibility changed: {visible}")
 
-        # @content.app_started
-        # def _on_app_started(app_id: int, model_id: int, task_id: int):
-        #     print(f"NewExperiment app started: app_id={app_id}, model_id={model_id}, task_id={task_id}")
-
         return content
 
     def _get_train_val_collections(self) -> Tuple[List[int], List[int]]:
@@ -208,7 +204,6 @@ class BaseTrainNode(SolutionElement):
 
         @self.main_widget.content.app_started
         def _on_app_started(app_id: int, model_id: int, task_id: int):
-            # we only need task_id for the progress checker
             self.automation.apply(
                 self._check_train_progress,
                 10,
@@ -329,23 +324,14 @@ class BaseTrainNode(SolutionElement):
         self._train_finished_cb.append(fn)
         return fn
 
-    def check_train_finised(self, task_id: int) -> bool:
+    def check_train_finished(self, task_id: int) -> bool:
         """
         Check if the training task has finished.
         """
         # todo: Implement the logic to check train task status.
         pass
 
-    # Automation btn
-    # @property
-    # def train_badge(self):
-    #     return SolutionCard.Badge(
-    #         label="Training:",
-    #         on_hover="in progress",
-    #         badge_type="success",
-    #         plain=True,
-    #     )
-    
+  
     @property
     def automation_modal(self):
         if not hasattr(self, "_automation_modal"):
@@ -376,7 +362,7 @@ class BaseTrainNode(SolutionElement):
     def _create_automation_modal(self):
         return Dialog(
             title="Automate Training",
-            content=Text("ABCD"), # self.main_widget.content,
+            content=Text("Settings from previous training session will be used."),
             size="tiny",
         )
     # -------------------------------------- #

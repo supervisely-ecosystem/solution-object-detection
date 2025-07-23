@@ -67,7 +67,7 @@ class TrainAutomation(Automation):
             style="align-items: center",
         )
         apply_btn = Container([self.apply_btn], style="align-items: flex-end")
-        self.apply_text.set("Schedule automatic model training on the training data. <br> <strong>Note:</strong> The settings from the last training session will be used.", "text")
+        self.apply_text.set("Run training first to save settings.", "warning")
 
         @self.enabled_checkbox.value_changed
         def on_automate_checkbox_change(is_checked: bool) -> None:
@@ -474,7 +474,7 @@ class BaseTrainNode(SolutionElement):
                 self.automation.apply_text.set("Run training first to save settings.", "warning")
                 self.automation.apply_btn.disable()
             else:
-                self.automation.apply_text.set("Schedule automatic model training on the training data.", "text")
+                self.automation.apply_text.set("Schedule automatic model training on the training data. <br> <strong>Note:</strong> The settings from the last training session will be used.", "text")
                 self.automation.apply_btn.enable()
             self.automation_modal.show()
 

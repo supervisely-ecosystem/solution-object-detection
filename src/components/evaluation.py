@@ -80,7 +80,7 @@ class EvaluationNode(SolutionElement):
         api: Api,
         project: Union[int, ProjectInfo],
         dataset_ids: Optional[list[int]] = None,
-        collection_id: Optional[int] = None,
+        collection: Union[int, str] = None,
         x: int = 0,
         y: int = 0,
         icon: Optional[Icons] = None,
@@ -100,10 +100,14 @@ class EvaluationNode(SolutionElement):
         self.project = (
             project if isinstance(project, ProjectInfo) else api.project.get_info_by_id(project)
         )
-        if bool(dataset_ids) ^ bool(collection_id):
-            raise ValueError("Either dataset_ids or collection_id must be provided, but not both.")
+        if not bool(dataset_ids) ^ bool(collection):
+            raise ValueError("Either dataset_ids or collection must be provided, but not both.")
         self.dataset_ids = dataset_ids
-        self.collection_id = collection_id
+        self.collection = (
+            api.entities_collection.get_info_by_name(project.id, collection)
+            if isinstance(collection, str)
+            else api.entities_collection.get_info_by_id(collection)
+        )
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()
@@ -204,9 +208,11 @@ class EvaluationNode(SolutionElement):
 
             @self._run_btn.click
             def run_cb():
+                self.node.hide_finished_badge()
+                self.node.hide_failed_badge()
+                self.show_in_progress_badge()
                 self._run_btn.disable()
                 self.run()
-                self._run_btn.enable()
 
         return self._run_btn
 
@@ -304,16 +310,15 @@ class EvaluationNode(SolutionElement):
         }
         if self.dataset_ids:
             data["dataset_ids"] = self.dataset_ids
-        elif self.collection_id:
-            data["collection_id"] = self.collection_id
+        elif self.collection:
+            data["collection_id"] = self.collection.id
         response = self.api.task.send_request(
             session_info["id"], self.EVALUATION_ENDPOINT, data=data
         )
         session_info["taskId"] = self.eval_session_info["id"]
         session_info["sessionId"] = self.model.task_id
         session_info["modelPath"] = self._model_path
-        # @TODO:
-        session_info["collectionName"] = None
+        session_info["collectionName"] = self.collection.name
 
         error = response.get("error")
         res_dir = response.get("data", {}).get("res_dir", None)
@@ -321,9 +326,14 @@ class EvaluationNode(SolutionElement):
         self.task_history.add_task(session_info)
         if error:
             logger.error(f"Error during evaluation: {error}")
+            self.node.show_failed_badge()
         elif res_dir:
+            self.node.show_finished_badge()
             for cb in self._finish_callbacks:
                 cb(res_dir)
+
+        self._run_btn.enable()
+        self.hide_in_progress_badge()
 
     def on_finish(self, fn):
         self._finish_callbacks.append(fn)
@@ -373,3 +383,10 @@ class EvaluationNode(SolutionElement):
         ]
         for prop in new_props:
             self.card.update_property(**prop)
+
+    def show_in_progress_badge(self) -> None:
+        badge = self.card.Badge("🏃‍♂️", "Evaluation...", "info", True)
+        self.card.add_badge(badge)
+
+    def hide_in_progress_badge(self) -> None:
+        self.card.remove_badge_by_key("Evaluation...")

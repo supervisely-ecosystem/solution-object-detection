@@ -100,7 +100,7 @@ class BaseTrainGUI(Widget):
     def _init_gui(self) -> NewExperiment:
         train_collections, val_collections = self._get_train_val_collections()
         split_mode = "collections" if train_collections and val_collections else "random"
-
+        
         if self.cv_task == TaskType.OBJECT_DETECTION:
             self.cv_task = "object-detection"
         elif self.cv_task == TaskType.INSTANCE_SEGMENTATION:

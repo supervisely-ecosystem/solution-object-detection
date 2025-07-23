@@ -4,6 +4,7 @@
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import supervisely.io.env as sly_env
+from supervisely import ProjectMeta
 from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
@@ -31,18 +32,23 @@ from supervisely.solution.components.tasks_history import SolutionTasksHistory
 
 
 class TrainAutomation(Automation):
+    TRAIN_JOB_ID = "train_model_job"
+    CHECK_STATUS_JOB_ID = "check_train_status_job"
+
     def __init__(self):
+        super().__init__()
+
+    def _create_widget(self) -> Container:
         pass
 
-    def add_task(self, task_id: int) -> bool:
-        """run scheduler tasl"""
-        pass
+    def apply(self, func: Callable, sec: int, job_id: str, *args) -> None:
+        self.scheduler.add_job(func, sec, job_id, True, *args)
+        logger.info(f"Scheduled model training job with ID {job_id} every {sec} seconds.")
 
-    def apply(self, sec: int, *args) -> None:
-        self.scheduler.add_job(
-            self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
-        )
-        logger.info(f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds.")
+    def remove(self, job_id: str) -> None:
+        if self.scheduler.is_job_scheduled(job_id):
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed scheduled model training job with ID {job_id}.")
 
 
 class TrainTasksHistory(SolutionTasksHistory):
@@ -101,18 +107,15 @@ class BaseTrainGUI(Widget):
         train_collections, val_collections = self._get_train_val_collections()
         split_mode = "collections" if train_collections and val_collections else "random"
         
-        if self.cv_task == TaskType.OBJECT_DETECTION:
-            self.cv_task = "object-detection"
-        elif self.cv_task == TaskType.INSTANCE_SEGMENTATION:
-            self.cv_task = "instance-segmentation"
-        elif self.cv_task == TaskType.SEMANTIC_SEGMENTATION:
-            self.cv_task = "semantic-segmentation"
+        project_meta = ProjectMeta.from_json(self.api.project.get_meta(self.project.id))
+        classes = [obj_cls.name for obj_cls in project_meta.obj_classes]
 
         content = NewExperiment(
             team_id=self.team_id,
             workspace_id=self.workspace_id,
             project_id=self.project.id,
-            step=3, # 3 - classes selection
+            classes=classes,
+            step=5, # 5 - start with model selection
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,
@@ -139,7 +142,7 @@ class BaseTrainGUI(Widget):
         return content
 
     def _get_train_val_collections(self) -> Tuple[List[int], List[int]]:
-        if self.project.type != ProjectType.IMAGES:
+        if self.project.type != ProjectType.IMAGES.value:
             return [], []
         train_collections, val_collections = [], []
         all_collections = self.api.entities_collection.get_list(self.project.id)
@@ -180,6 +183,7 @@ class BaseTrainNode(SolutionElement):
         self.api = api
         self.tasks_history = TrainTasksHistory(self.api, title="Train Tasks History")
         self.main_widget = self.gui_class(api=api, project=self.project_id)
+        self.automation = TrainAutomation()
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
@@ -187,6 +191,7 @@ class BaseTrainNode(SolutionElement):
             self.tasks_history.tasks_modal,
             self.tasks_history.logs_modal,
             self.main_widget.content,
+            # self.automation_modal,
         ]
         self._train_started_cb = []
         self._train_finished_cb = []
@@ -196,6 +201,25 @@ class BaseTrainNode(SolutionElement):
         def _on_card_click():
             # if not self.main_widget.content.visible:
             self.main_widget.content.visible = True
+
+        @self.main_widget.content.app_started
+        def _on_app_started(app_id: int, model_id: int, task_id: int):
+            self.automation.apply(
+                self._check_train_progress,
+                10,
+                self.automation.CHECK_STATUS_JOB_ID,
+                task_id,
+            )
+
+    def _check_train_progress(self, task_id: int):
+        # if app starts
+        #@ TODO: get train status from the task (fix send request on web progress status message)
+        # train_status = self.api.task.send_request(task_id, "train_status", {})
+        # print(f"Train status: {train_status}")
+        self.card.update_badge_by_key(key="In progress", label="Training", badge_type="info")
+        
+        # if app failed
+        # self.card.remove_badge_by_key("Training")
 
     def _create_card(self) -> SolutionCard:
         return SolutionCard(
@@ -209,7 +233,7 @@ class BaseTrainNode(SolutionElement):
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         return SolutionCard.Tooltip(
             description=self.description,
-            content=[self.tasks_button, self.open_session_button],
+            content=[self.tasks_button, self.open_session_button, self.automation_button],
         )
 
     @property
@@ -300,9 +324,45 @@ class BaseTrainNode(SolutionElement):
         self._train_finished_cb.append(fn)
         return fn
 
-    def check_train_finised(self, task_id: int) -> bool:
+    def check_train_finished(self, task_id: int) -> bool:
         """
         Check if the training task has finished.
         """
         # todo: Implement the logic to check train task status.
         pass
+
+  
+    @property
+    def automation_modal(self):
+        if not hasattr(self, "_automation_modal"):
+            self._automation_modal = self._create_automation_modal()
+        return self._automation_modal
+    
+    @property
+    def automation_button(self):
+        if not hasattr(self, "_automation_button"):
+            self._automation_button = self._create_automation_button()
+        return self._automation_button
+    
+    def _create_automation_button(self):
+        btn = Button(
+            "Automate training",
+            icon="zmdi zmdi-flash-auto",
+            button_size="mini",
+            plain=True,
+            button_type="text",
+        )
+
+        @btn.click
+        def _show_automate_dialog():
+            self.automation_modal.show()
+
+        return btn
+    
+    def _create_automation_modal(self):
+        return Dialog(
+            title="Automate Training",
+            content=Text("Settings from previous training session will be used."),
+            size="tiny",
+        )
+    # -------------------------------------- #

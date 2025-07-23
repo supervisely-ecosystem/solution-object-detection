@@ -103,11 +103,17 @@ class EvaluationNode(SolutionElement):
         if not bool(dataset_ids) ^ bool(collection):
             raise ValueError("Either dataset_ids or collection must be provided, but not both.")
         self.dataset_ids = dataset_ids
-        self.collection = (
-            api.entities_collection.get_info_by_name(project.id, collection)
-            if isinstance(collection, str)
-            else api.entities_collection.get_info_by_id(collection)
-        )
+        self.collection = None
+        try:
+            if isinstance(collection, str):
+                self.collection = api.entities_collection.get_info_by_name(project.id, collection)
+            elif isinstance(collection, int):
+                self.collection = api.entities_collection.get_info_by_id(collection)
+            else:
+                raise TypeError("Collection must be either a string (name) or an integer (ID).")
+        except Exception as e:
+            logger.warning(f"Failed to get collection info: {e}")
+
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()

@@ -27,10 +27,12 @@ evaluation_report = EvaluationReportNode(
     x=1500,
     y=2140,
 )
+evaluation_report.node.disable()
+
 re_eval = EvaluationNode(
     api=g.api,
     project=g.project,
-    collection="collection_diverse",
+    collection=g.val_collection,
     x=1265,
     y=2025,
     tooltip_position="left",
@@ -76,10 +78,11 @@ deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
 
 @re_eval.on_finish
 def on_re_eval_finished(res_dir) -> None:
-    compare_node.evaluation_dirs.append(res_dir)
-    if compare_node.automation.is_on:
-        compare_node.run()
     evaluation_report.set_benchmark_dir(res_dir)
+    evaluation_report.node.enable()
+    compare_node.evaluation_dirs.append(res_dir)
+    compare_node.evaluation_dirs.append(res_dir) # TODO: temp fix
+    compare_node.run()
 
 
 @compare_node.on_finish

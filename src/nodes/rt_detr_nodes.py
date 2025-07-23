@@ -13,6 +13,7 @@ train_node = BaseTrainNode(
     x=635,
     y=1850,
 )
+train_node.set_collection_ids(train_collection_id=g.train_collection.id, val_collection_id=g.val_collection.id)
 
 overview_dummy = sly.solution.LinkNode(
     title="Overview + how to use model",

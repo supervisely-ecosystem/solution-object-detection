@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Optional
 
@@ -11,8 +12,14 @@ app = sly.Application(layout=layout, static_dir="static")
 app.call_before_shutdown(TasksScheduler().shutdown)
 
 
-def _run_import_from_cloud(path: Optional[str] = None):
-    task_id = n.cloud_import.main_widget.run(path)
+@n.cloud_import.on_start
+def _on_cloud_import_start():
+    n.cloud_import.run_modal.hide()
+    n.cloud_import.main_widget.path_input.set_value("")
+
+
+@n.cloud_import.on_finish
+def _on_cloud_import_finish(task_id: int):
     n.cloud_import.main_widget.wait_import_completion(task_id)
 
     upd_project = g.api.project.get_info_by_id(g.project.id)
@@ -26,29 +33,25 @@ def _run_import_from_cloud(path: Optional[str] = None):
         n.sampling.update_sampling_widgets()
 
 
-@n.cloud_import.main_widget.run_btn.click
-def _on_cloud_import_run_btn_click():
-    n.cloud_import.main_widget.path_input.set_value("")
-    n.cloud_import.run_modal.hide()
-    _run_import_from_cloud()
-
-
 @n.cloud_import.automation_btn.click
 def _on_apply_automation_btn_click():
     n.cloud_import.automation_modal.hide()
-    n.cloud_import.apply_automation(_run_import_from_cloud)
+    n.cloud_import.apply_automation(n.cloud_import.main_widget.run)
 
 
-def run_sampling():
+@n.sampling.on_start
+def _on_sampling_start():
     n.sampling.main_modal.hide()
     n.sampling.automation_modal.hide()
     sample_settinngs = n.sampling.main_widget.get_sample_settings()
     if not sample_settinngs.get("sample_size") and not sample_settinngs.get("limit"):
-        sly.logger.warning("Sampling stopped: sample size and limit are not set or both are zero.")
-        return
-    res = n.sampling.main_widget.run()
+        sly.logger.error("Sampling stopped: sample size and limit are not set or both are zero.")
+
+
+@n.sampling.on_finish
+def _on_sampling_finish(res):
     if not res:
-        sly.logger.warning("Sampling was not finished successfully.")
+        sly.logger.error("Sampling was not finished successfully.")
         return
     src, dst, images_count = res
     n.labeling_project_node.update(new_items_count=images_count)
@@ -62,10 +65,9 @@ def run_sampling():
     n.splits.set_items_count(images_count)
 
 
-n.sampling.run = run_sampling
-
-
-n.queue.set_callback(lambda: n.splits.set_items_count(n.queue.get_labeled_images_count()))
+@n.queue.on_refresh
+def _on_queue_refresh():
+    n.splits.set_items_count(n.queue.get_labeled_images_count())
 
 
 def _move_labeled_images():
@@ -95,12 +97,21 @@ def _on_move_labeled_automation_btn_click():
     n.move_labeled.apply_automation(_move_labeled_images)
 
 
+@n.train_node.on_train_finished
+def _on_train_finished(task_id: int):
+    task_info = g.api.task.get_info_by_id(task_id)
+    artifacts_dir = task_info["meta"]["output"]["experiment"]["data"]["artifacts_dir"]
+    best_checkpoint = task_info["meta"]["output"]["experiment"]["data"]["best_checkpoint"]
+    model_path = os.path.join(artifacts_dir, "checkpoints", best_checkpoint)
+    n.re_eval.set_model_path(model_path)
+    n.re_eval.run()
+
 # # * Restore data and state if available
 sly.app.restore_data_state(g.task_id)
 
 # # * Some restoration logic (!AFTER restore_data_state)
 if n.cloud_import.automation.enabled_checkbox.is_checked():
-    n.cloud_import.apply_automation(_run_import_from_cloud)
+    n.cloud_import.apply_automation(n.cloud_import.main_widget.run)
 
 if n.sampling.automation.enabled_checkbox.is_checked():
     n.sampling.apply_automation(n.sampling.run)

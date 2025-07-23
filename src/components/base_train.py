@@ -42,7 +42,7 @@ class TrainAutomation(Automation):
         pass
 
     def apply(self, func: Callable, sec: int, job_id: str, *args) -> None:
-        self.scheduler.add_job(func, interval=sec, job_id=job_id, replace_existing=True, *args)
+        self.scheduler.add_job(func, sec, job_id, True, *args)
         logger.info(f"Scheduled model comparison job with ID {job_id} every {sec} seconds.")
 
     def remove(self, job_id: str) -> None:
@@ -208,11 +208,19 @@ class BaseTrainNode(SolutionElement):
 
         @self.main_widget.content.app_started
         def _on_app_started(app_id: int, model_id: int, task_id: int):
-            self.automation.apply(self._check_train_progress, 10, self.automation.CHECK_STATUS_JOB_ID, app_id, model_id, task_id)
+            # we only need task_id for the progress checker
+            self.automation.apply(
+                self._check_train_progress,
+                10,
+                self.automation.CHECK_STATUS_JOB_ID,
+                task_id,
+            )
 
     def _check_train_progress(self, task_id: int):
         # if app starts
-        self.card.update_badge_by_key(key="In progress", label="Training", badge_type="info")
+        train_status = self.api.task.send_request(task_id, "train_status", {})
+        print(f"Train status: {train_status}")
+        self.card.update_badge_by_key(key="In progress", label=train_status, badge_type="info")
         
         # if app failed
         # self.card.remove_badge_by_key("Training")

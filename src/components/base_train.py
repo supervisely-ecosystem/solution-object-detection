@@ -43,12 +43,12 @@ class TrainAutomation(Automation):
 
     def apply(self, func: Callable, sec: int, job_id: str, *args) -> None:
         self.scheduler.add_job(func, sec, job_id, True, *args)
-        logger.info(f"Scheduled model comparison job with ID {job_id} every {sec} seconds.")
+        logger.info(f"Scheduled model training job with ID {job_id} every {sec} seconds.")
 
     def remove(self, job_id: str) -> None:
         if self.scheduler.is_job_scheduled(job_id):
             self.scheduler.remove_job(job_id)
-            logger.info(f"Removed scheduled model comparison job with ID {job_id}.")
+            logger.info(f"Removed scheduled model training job with ID {job_id}.")
 
 
 class TrainTasksHistory(SolutionTasksHistory):

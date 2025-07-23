@@ -80,6 +80,7 @@ class EvaluationNode(SolutionElement):
         api: Api,
         project: Union[int, ProjectInfo],
         dataset_ids: Optional[list[int]] = None,
+        collection_id: Optional[int] = None,
         x: int = 0,
         y: int = 0,
         icon: Optional[Icons] = None,
@@ -99,7 +100,10 @@ class EvaluationNode(SolutionElement):
         self.project = (
             project if isinstance(project, ProjectInfo) else api.project.get_info_by_id(project)
         )
+        if bool(dataset_ids) ^ bool(collection_id):
+            raise ValueError("Either dataset_ids or collection_id must be provided, but not both.")
         self.dataset_ids = dataset_ids
+        self.collection_id = collection_id
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()
@@ -250,8 +254,10 @@ class EvaluationNode(SolutionElement):
         task_info_json = self.api.task.start(
             agent_id=self._get_agent(),
             workspace_id=self.project.workspace_id,
-            description="Solution: " + str(self.api.task_id),
+            task_name="Solution: " + str(self.api.task_id),
             module_id=module_id,
+            is_branch=True,  # ! remove
+            app_version="add-collections",  # ! remove
         )
         task_id = task_info_json["id"]
         current_time = time.time()
@@ -292,14 +298,16 @@ class EvaluationNode(SolutionElement):
 
     def _send_evaluation_request(self):
         session_info = self.eval_session_info
+        data = {
+            "session_id": self.model.task_id,
+            "project_id": self.project.id,
+        }
+        if self.dataset_ids:
+            data["dataset_ids"] = self.dataset_ids
+        elif self.collection_id:
+            data["collection_id"] = self.collection_id
         response = self.api.task.send_request(
-            session_info["id"],
-            self.EVALUATION_ENDPOINT,
-            data={
-                "session_id": self.model.task_id,
-                "project_id": self.project.id,
-                "dataset_ids": self.dataset_ids,
-            },
+            session_info["id"], self.EVALUATION_ENDPOINT, data=data
         )
         session_info["taskId"] = self.eval_session_info["id"]
         session_info["sessionId"] = self.model.task_id

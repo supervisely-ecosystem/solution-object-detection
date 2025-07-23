@@ -327,7 +327,7 @@ class EvaluationNode(SolutionElement):
         session_info["collectionName"] = self.collection.name
 
         error = response.get("error")
-        res_dir = response.get("data", {}).get("res_dir", None)
+        res_dir = response.get("data")
         session_info["status"] = "Success" if not error else "Failed"
         self.task_history.add_task(session_info)
         if error:

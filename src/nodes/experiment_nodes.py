@@ -1,7 +1,10 @@
-import src.sly_globals as g
 import supervisely as sly
+
+import src.sly_globals as g
+from src.components import BaseDeployNode
 from src.components.compare import CompareNode
 from src.components.custom_model import DeployCustomModel
+from src.components.evaluation import EvaluationNode
 from src.components.evaluation_report import EvaluationReportNode
 from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
@@ -24,12 +27,16 @@ evaluation_report = EvaluationReportNode(
     x=1500,
     y=2140,
 )
-re_eval_dummy = sly.solution.LinkNode(
-    title="Re-evaluate Model",
-    description="Re-evaluate the model on the latest labeled data from the Training Project. ",
-    width=250,
-    x=1300,
+re_eval = EvaluationNode(
+    api=g.api,
+    project=g.project,
+    collection="collection_diverse",
+    x=1265,
     y=2025,
+    tooltip_position="left",
+)
+re_eval.set_model_path(
+    "/mmsegmentation/2266_coffee-leaf-biotic-stress/checkpoints/data/best_aAcc_epoch_18.pth"
 )
 
 compare_node = CompareNode(
@@ -65,6 +72,14 @@ comparison_report.node.disable()
 
 redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
 deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
+
+
+@re_eval.on_finish
+def on_re_eval_finished(res_dir) -> None:
+    compare_node.evaluation_dirs.append(res_dir)
+    if compare_node.automation.is_on:
+        compare_node.run()
+    evaluation_report.set_benchmark_dir(res_dir)
 
 
 @compare_node.on_finish

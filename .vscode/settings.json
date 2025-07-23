@@ -5,9 +5,12 @@
     ".venv": true
   },
   "editor.formatOnSave": true,
-  "editor.formatOnPaste": true,
+  "editor.formatOnPaste": false,
   "editor.formatOnType": true,
-  "black-formatter.args": ["--line-length", "100"],
+  "black-formatter.args": [
+    "--line-length",
+    "100"
+  ],
   "[html]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -21,6 +24,9 @@
       "source.organizeImports": "explicit"
     }
   },
-  "isort.args": ["--profile", "black"],
+  "isort.args": [
+    "--profile",
+    "black"
+  ],
   "debug.inlineValues": "off"
 }

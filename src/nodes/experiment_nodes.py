@@ -77,7 +77,8 @@ deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
 @re_eval.on_finish
 def on_re_eval_finished(res_dir) -> None:
     compare_node.evaluation_dirs.append(res_dir)
-    if compare_node.automation.is_on:
+    is_automated, _ = compare_node.automation.get_automation_details()
+    if is_automated:
         compare_node.run()
     evaluation_report.set_benchmark_dir(res_dir)
 

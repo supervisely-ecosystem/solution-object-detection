@@ -100,8 +100,9 @@ class EvaluationNode(SolutionElement):
         self.project = (
             project if isinstance(project, ProjectInfo) else api.project.get_info_by_id(project)
         )
-        if not bool(dataset_ids) ^ bool(collection):
-            raise ValueError("Either dataset_ids or collection must be provided, but not both.")
+        if dataset_ids or collection:
+            if not bool(dataset_ids) ^ bool(collection):
+                raise ValueError("Either dataset_ids or collection must be provided, but not both.")
         self.dataset_ids = dataset_ids
         self.collection = None
         try:

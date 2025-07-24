@@ -111,6 +111,7 @@ class TrainAutomation(Automation):
             return False, None, None, None
         return enabled, period, interval, sec
 
+
 class TrainTasksHistory(SolutionTasksHistory):
     def __init__(self, api: Api, title: str = "Tasks History"):
         super().__init__(api, title)
@@ -168,7 +169,7 @@ class BaseTrainGUI(Widget):
     def _init_gui(self) -> NewExperiment:
         train_collections, val_collections = self._get_train_val_collections()
         split_mode = "collections" if train_collections and val_collections else "random"
-        
+
         project_meta = ProjectMeta.from_json(self.api.project.get_meta(self.project.id))
         classes = [obj_cls.name for obj_cls in project_meta.obj_classes]
 
@@ -177,22 +178,22 @@ class BaseTrainGUI(Widget):
             workspace_id=self.workspace_id,
             project_id=self.project.id,
             classes=classes,
-            step=5, # 5 - start with model selection
+            step=5,  # 5 - start with model selection
             filter_projects_by_workspace=True,
             project_types=[ProjectType.IMAGES],
             cv_task=self.cv_task,
             selected_frameworks=self.frameworks,
-            train_val_split_mode=split_mode, # only collections?
+            train_val_split_mode=split_mode,  # only collections?
             train_collections=train_collections,
             val_collections=val_collections,
             # gui selectors disabled
-            cv_task_selection_disabled=True, # 1 - cv task selection
-            project_selection_disabled=True, # 2 - project selection
-            classes_selection_disabled=False, # 3 - classes selection
-            train_val_split_selection_disabled=True, # 4 - train/val split selection
-            model_selection_disabled=False, # 5 - model selection
-            evaluation_selection_disabled=False, # 9 - evaluation selection
-            speed_test_selection_disabled=False, # 9 - speed test selection
+            cv_task_selection_disabled=True,  # 1 - cv task selection
+            project_selection_disabled=True,  # 2 - project selection
+            classes_selection_disabled=False,  # 3 - classes selection
+            train_val_split_selection_disabled=True,  # 4 - train/val split selection
+            model_selection_disabled=False,  # 5 - model selection
+            evaluation_selection_disabled=False,  # 9 - evaluation selection
+            speed_test_selection_disabled=False,  # 9 - speed test selection
             framework_selection_disabled=self.frameworks is not None,
             architecture_selection_disabled=True,
         )
@@ -255,7 +256,7 @@ class BaseTrainNode(SolutionElement):
             self.main_widget.content,
             self.automation_modal,
         ]
-        
+
         self._train_settings = None
         self._previous_task_id = None
 
@@ -297,8 +298,9 @@ class BaseTrainNode(SolutionElement):
         def on_automation_apply_button_click():
             enabled, _, _, sec = self.automation.get_automation_details()
             self.show_automation_info(enabled, sec)
-            self.automation.apply(self._run_automated_task, sec, self.automation.CHECK_STATUS_JOB_ID)
-
+            self.automation.apply(
+                self._run_automated_task, sec, self.automation.CHECK_STATUS_JOB_ID
+            )
 
     def _save_train_settings(self):
         """
@@ -317,7 +319,7 @@ class BaseTrainNode(SolutionElement):
         return self._train_settings
 
     def _check_train_progress(self, task_id: int):
-        #@ TODO: get train status from the task (fix send request on web progress status message)
+        # @ TODO: get train status from the task (fix send request on web progress status message)
         # train_status = self.api.task.send_request(task_id, "train_status", {})
         # print(f"Train status: {train_status}")
 
@@ -327,10 +329,15 @@ class BaseTrainNode(SolutionElement):
                 self.card.update_badge_by_key(key="Training", label="Failed", badge_type="error")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.CONSUMED.value:
-                self.card.update_badge_by_key(key="Training", label="Consumed", badge_type="warning")
+                self.card.update_badge_by_key(
+                    key="Training", label="Consumed", badge_type="warning"
+                )
             elif task_info["status"] == TaskApi.Status.QUEUED.value:
                 self.card.update_badge_by_key(key="Training", label="Queued", badge_type="warning")
-            elif task_info["status"] in [TaskApi.Status.STOPPED.value, TaskApi.Status.TERMINATING.value]:
+            elif task_info["status"] in [
+                TaskApi.Status.STOPPED.value,
+                TaskApi.Status.TERMINATING.value,
+            ]:
                 self.card.update_badge_by_key(key="Training", label="Stopped", badge_type="warning")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.FINISHED.value:
@@ -348,7 +355,9 @@ class BaseTrainNode(SolutionElement):
                         logger.error(f"Error in train finished callback: {e}")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             else:
-                self.card.update_badge_by_key(key="Training", label="In progress", badge_type="info")
+                self.card.update_badge_by_key(
+                    key="Training", label="In progress", badge_type="info"
+                )
         else:
             logger.error(f"Task info is not found for task_id: {task_id}")
 
@@ -462,25 +471,24 @@ class BaseTrainNode(SolutionElement):
         # todo: Implement the logic to check train task status.
         pass
 
-  
     # Automation
     @property
     def automation_apply_button(self) -> Button:
         """Get the apply training button"""
         return self.automation.apply_btn
-    
+
     @property
     def automation_modal(self):
         if not hasattr(self, "_automation_modal"):
             self._automation_modal = self._create_automation_modal()
         return self._automation_modal
-    
+
     @property
     def automation_button(self):
         if not hasattr(self, "_automation_button"):
             self._automation_button = self._create_automation_button()
         return self._automation_button
-    
+
     def _create_automation_button(self):
         btn = Button(
             "Automate training",
@@ -496,12 +504,15 @@ class BaseTrainNode(SolutionElement):
                 self.automation.apply_text.set("Run training first to save settings.", "warning")
                 self.automation.apply_btn.disable()
             else:
-                self.automation.apply_text.set("Schedule automatic model training on the training data. <br> <strong>Note:</strong> The settings from the last training session will be used.", "text")
+                self.automation.apply_text.set(
+                    "Schedule automatic model training on the training data. <br> <strong>Note:</strong> The settings from the last training session will be used.",
+                    "text",
+                )
                 self.automation.apply_btn.enable()
             self.automation_modal.show()
 
         return btn
-    
+
     def _create_automation_modal(self) -> Dialog:
         return Dialog(
             title="Automate Training",
@@ -522,7 +533,7 @@ class BaseTrainNode(SolutionElement):
         if self._previous_task_id is None:
             logger.error("No previous task id found. Run training first to save settings.")
             return
-        
+
         try:
             task_id = self._start_automated_training()
             if task_id is None:
@@ -531,13 +542,15 @@ class BaseTrainNode(SolutionElement):
         except Exception as e:
             logger.error(f"Failed to run automated training task: {e}")
             return
-        self.automation.apply(self._check_train_progress, 10, self.automation.CHECK_STATUS_JOB_ID, task_id)
+        self.automation.apply(
+            self._check_train_progress, 10, self.automation.CHECK_STATUS_JOB_ID, task_id
+        )
 
     def _start_automated_training(self) -> Optional[int]:
         task_info = self.api.task.get_info_by_id(self._previous_task_id)
         if task_info is None:
             return None
-        
+
         description = f"Automated training run from Solution app. Task ID: {self._previous_task_id}"
         agent_id = task_info["agentId"]
         workspace_id = task_info["workspaceId"]
@@ -556,13 +569,15 @@ class BaseTrainNode(SolutionElement):
             params=params,
             app_version=version,
             is_branch=is_branch,
-            task_name=description
+            task_name=description,
         )
         return session_info.task_id
+
     # -------------------------------------- #
 
 
 # Framework classes
+
 
 class RTDETRv2TrainGUI(BaseTrainGUI):
     _PREDEFINED_FRAMEWORKS = ["RT-DETRv2"]
@@ -593,6 +608,7 @@ class RTDETRv2TrainNode(BaseTrainNode):
         "settings. The framework is fixed to RT-DETRv2."
     )
 
+
 class YOLOTrainGUI(BaseTrainGUI):
     _PREDEFINED_FRAMEWORKS = ["YOLO"]
 
@@ -622,6 +638,7 @@ class YOLOTrainNode(BaseTrainNode):
         "settings. The framework is fixed to YOLO."
     )
 
+
 class DEIMTrainGUI(BaseTrainGUI):
     _PREDEFINED_FRAMEWORKS = ["DEIM"]
 
@@ -650,4 +667,6 @@ class DEIMTrainNode(BaseTrainNode):
         "Train DEIM model on the selected project using the last saved training "
         "settings. The framework is fixed to DEIM."
     )
+
+
 # -------------------------------------- #

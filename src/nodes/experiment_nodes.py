@@ -1,19 +1,18 @@
 import src.sly_globals as g
 import supervisely as sly
+from src.components import BaseDeployNode
+from src.components.all_experiments import AllExperimentsNode
 from src.components.compare import CompareNode
 from src.components.custom_model import DeployCustomModel
+from src.components.evaluation import EvaluationNode
 from src.components.evaluation_report import EvaluationReportNode
 from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
-experiments = sly.solution.LinkNode(
-    x=1300,
-    y=1850,
-    title="All experiments",
-    description="Track all experiments in one place. The best model for comparison will be selected from the list of experiments based on the mAP metric.",
-    link=sly.utils.abs_url("/nn/experiments"),
-)
+experiments = AllExperimentsNode(x=1300, y=1850)
+experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
+
 evaluation_report = EvaluationReportNode(
     api=g.api,
     project_info=g.project,
@@ -24,12 +23,18 @@ evaluation_report = EvaluationReportNode(
     x=1500,
     y=2140,
 )
-re_eval_dummy = sly.solution.LinkNode(
-    title="Re-evaluate Model",
-    description="Re-evaluate the model on the latest labeled data from the Training Project. ",
-    width=250,
-    x=1300,
+evaluation_report.node.disable()
+
+re_eval = EvaluationNode(
+    api=g.api,
+    project=g.project,
+    collection=g.val_collection,
+    x=1265,
     y=2025,
+    tooltip_position="left",
+)
+re_eval.set_model_path(
+    "/mmsegmentation/2266_coffee-leaf-biotic-stress/checkpoints/data/best_aAcc_epoch_18.pth"
 )
 
 compare_node = CompareNode(
@@ -65,6 +70,15 @@ comparison_report.node.disable()
 
 redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
 deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
+
+
+@re_eval.on_finish
+def on_re_eval_finished(res_dir) -> None:
+    evaluation_report.set_benchmark_dir(res_dir)
+    evaluation_report.node.enable()
+    compare_node.evaluation_dirs.append(res_dir)
+    compare_node.evaluation_dirs.append(res_dir) # TODO: temp fix
+    compare_node.run()
 
 
 @compare_node.on_finish

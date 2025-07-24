@@ -13,6 +13,9 @@ train_node = RTDETRv2TrainNode(
     x=635,
     y=1850,
 )
+train_node.set_collection_ids(
+    train_collection_id=g.train_collection.id, val_collection_id=g.val_collection.id
+)
 
 overview_dummy = sly.solution.LinkNode(
     title="Overview + how to use model",
@@ -55,6 +58,6 @@ eval_report_after_training = EvaluationReportNode(
     x=800,
     y=2210,
     icon=sly.app.widgets.Icons(
-        class_name="zmdi zmdi-collection-text", color="#1976D2", bg_color="#E3F2FD"
+        class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED"
     ),
 )

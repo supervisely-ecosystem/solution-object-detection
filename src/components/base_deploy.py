@@ -1,6 +1,3 @@
-# здесь будет класс, которые будет отвечать за деплой модели, показывать информацию о ней
-
-
 from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 from supervisely.api.api import Api
@@ -8,12 +5,16 @@ from supervisely.app.exceptions import show_dialog
 from supervisely.app.widgets import (
     AgentSelector,
     Button,
+    CheckboxField,
     Container,
     Dialog,
+    Empty,
     Field,
     Flexbox,
     Icons,
     Input,
+    InputNumber,
+    Select,
     SolutionCard,
     TasksHistory,
     Text,
@@ -23,25 +24,26 @@ from supervisely.io.env import team_id as env_team_id
 from supervisely.sly_logger import logger
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
 from supervisely.solution.components.tasks_history import SolutionTasksHistory
+from supervisely.solution.utils import (
+    get_interval_period,
+    get_seconds_from_period_and_interval,
+)
 
 
 class DeployTasksAutomation(Automation):
     REFRESH_RATE = 30  # seconds
+    REFRESH_GPU_USAGE = "refresh_gpu_usage"
+    FREEZE_MODEL = "freeze_model_automation"
 
-    def __init__(self):
-        super().__init__()
-        self.job_id = f"deploy_tasks_automation"  # ! This should be unique for each automation
+    def apply(self, func: Optional[Callable], job_id: str, sec: int = None) -> None:
+        if self.scheduler.is_job_scheduled(job_id):
+            self.scheduler.remove_job(job_id)
+        sec = sec or self.REFRESH_RATE
+        self.scheduler.add_job(func, sec, job_id)
 
-    def apply(self, func: Optional[Callable] = None) -> None:
-        self.func = func or self.func
-        if self.scheduler.is_job_scheduled(self.job_id):
-            self.scheduler.remove_job(self.job_id)
-        self.scheduler.add_job(self.func, self.REFRESH_RATE, self.job_id)
-
-    def remove(self) -> None:
-        if self.scheduler.is_job_scheduled(self.job_id):
-            self.scheduler.remove_job(self.job_id)
-        self.func = None
+    def remove(self, job_id: str) -> None:
+        if self.scheduler.is_job_scheduled(job_id):
+            self.scheduler.remove_job(job_id)
 
 
 class DeployTasksHistory(SolutionTasksHistory):
@@ -162,7 +164,93 @@ class BaseDeployGUI(Widget):
         return self._model_name_input_container
 
     @property
+    def enable_autofreeze_checkbox(self):
+        if not hasattr(self, "_enable_stopping_checkbox"):
+            self._enable_stopping_checkbox = CheckboxField(
+                title="Optimize Memory Usage",
+                description="If enabled, the model will be automatically unloaded from memory after a period of inactivity or to free up GPU memory for other tasks (e.g. training).",
+                checked=False,
+            )
+        return self._enable_stopping_checkbox
+
+    @property
+    def enable_autofreeze_container(self):
+        if not hasattr(self, "_enable_autofreeze_container"):
+
+            interval_input = InputNumber(
+                min=1, value=60, debounce=1000, controls=False, size="mini"
+            )
+            interval_input.disable()
+            period_select = Select(
+                [
+                    Select.Item("min", "minutes"),
+                    Select.Item("h", "hours"),
+                    Select.Item("d", "days"),
+                ],
+                size="mini",
+            )
+            period_select.disable()
+
+            settings_container = Container(
+                [interval_input, period_select, Empty()],
+                direction="horizontal",
+                gap=3,
+                fractions=[1, 1, 1],
+                style="align-items: center",
+            )
+            self._enable_autofreeze_container = Container(
+                widgets=[
+                    self.enable_autofreeze_checkbox,
+                    settings_container,
+                ],
+            )
+
+            @self.enable_autofreeze_checkbox.value_changed
+            def _on_checkbox_change(checked: bool):
+                if checked:
+                    interval_input.enable()
+                    period_select.enable()
+                else:
+                    interval_input.disable()
+                    period_select.disable()
+
+            self.get_autofreeze_settings = lambda: get_seconds_from_period_and_interval(
+                period_select.get_value(),
+                interval_input.get_value(),
+            )
+
+            def __set_autofreeze_settings(
+                sec: Optional[int] = None,
+                period: Optional[Literal["min", "h", "d"]] = None,
+                interval: Optional[int] = None,
+            ):
+                if sec is not None:
+                    period, interval = get_interval_period(sec)
+                period_select.set_value(period)
+                interval_input.value = interval
+
+            self._set_autofreeze_settings = lambda p, i: __set_autofreeze_settings(p, i)
+        return self._enable_autofreeze_container
+
+    def set_autofreeze_settings(
+        self,
+        sec: Optional[int] = None,
+        period: Optional[str] = None,
+        interval: Optional[int] = None,
+    ):
+        """
+        Sets the autofreeze settings for the model.
+        :param sec: Total seconds of inactivity after which the model will be frozen (optional).
+        :param period: The period of inactivity after which the model will be frozen (optional).
+        :param interval: The interval in the specified period (optional).
+
+        If sec is provided, period and interval are ignored.
+        """
+        self._set_autofreeze_settings(sec, period, interval)
+
+    @property
     def deploy_button(self):
+        self.set_autofreeze_settings
         if not hasattr(self, "_deploy_button"):
             self._deploy_button = Button(text="Deploy")
         return self._deploy_button
@@ -193,6 +281,7 @@ class BaseDeployGUI(Widget):
                     widgets=[
                         self.model_name_input_container,
                         self.select_agent_field,
+                        self.enable_autofreeze_container,
                         self.deploy_button_container,
                     ],
                     gap=20,
@@ -235,6 +324,24 @@ class BaseDeployGUI(Widget):
             self.model = None
             self.enable_gui()
 
+    def freeze_model(self):
+        """
+        Method to unload the model from the memory. Can be used to free up GPU memory without stopping the serving app.
+        """
+        if self.model is None:
+            logger.warning("Model is not deployed. Cannot freeze.")
+            return
+        try:
+            if self.model._model_frozen:
+                logger.warning("Model is already frozen.")
+            else:
+                self.model._freeze_model()
+            self.automation.remove(self.automation.FREEZE_TASKS_AUTOMATION)
+            # self.enable_gui()
+            # self.model = None
+        except Exception as e:
+            logger.error(f"Failed to freeze model: {e}", exc_info=True)
+
     def get_json_data(self) -> dict:
         return {}
 
@@ -247,6 +354,7 @@ class BaseDeployGUI(Widget):
         self.deploy_button.show()
         self.stop_button.hide()
         self.change_agent_button.hide()
+        self.enable_autofreeze_checkbox.enable()
 
     def disable_gui(self):
         self.select_agent.disable()
@@ -254,6 +362,7 @@ class BaseDeployGUI(Widget):
         self.deploy_button.hide()
         self.stop_button.show()
         self.change_agent_button.show()
+        self.enable_autofreeze_checkbox.disable()
 
 
 class BaseDeployNode(SolutionElement):
@@ -279,7 +388,7 @@ class BaseDeployNode(SolutionElement):
         self.tasks_history = DeployTasksHistory(self.api)
         self.automation = DeployTasksAutomation()
         self.main_widget = self.gui_class(api=api, team_id=env_team_id())
-        self.automation.apply(self.refresh_memory_usage_info)
+        self.automation.apply(self.refresh_memory_usage_info, self.automation.REFRESH_GPU_USAGE)
 
         @self.main_widget.deploy_button.click
         def _on_deploy_button_click():
@@ -296,6 +405,7 @@ class BaseDeployNode(SolutionElement):
                 self.main_widget.model.shutdown()
                 self.main_widget.enable_gui()
                 self.session_link = ""
+                self.automation.remove(self.automation.FREEZE_MODEL)
             except Exception as e:
                 show_dialog(
                     title="Error",
@@ -409,6 +519,14 @@ class BaseDeployNode(SolutionElement):
 
             self.session_link = self.main_widget.model.url
             self._update_properties(deploy_info)
+            if self.main_widget.enable_autofreeze_checkbox.is_checked():
+                sec = self.main_widget.get_autofreeze_settings()
+                if sec:
+                    self.automation.apply(
+                        self.main_widget.freeze_model,
+                        self.automation.FREEZE_MODEL,
+                        sec,
+                    )
         except Exception as e:
             show_dialog(
                 title="Deployment Error",
@@ -468,6 +586,8 @@ class BaseDeployNode(SolutionElement):
             self.card.remove_property_by_key("Agent")
             self.card.remove_property_by_key("GPU Memory")
 
+        self._update_properties()
+
     def _update_properties(self, deploy_info: Optional[Dict] = None) -> None:
         """
         Updates the properties of the card with the current model and agent information.
@@ -478,7 +598,15 @@ class BaseDeployNode(SolutionElement):
             self.card.update_property("Source", deploy_info["model_source"])
             self.card.update_property("Hardware", deploy_info["hardware"])
             self.card.update_property("Model", deploy_info["model_name"], False, True)
+            if self.main_widget.model._model_frozen:
+                self.node.hide_automation_badge()
+                self.card.update_property("Status", "Unloaded from memory", False, True)
+            else:
+                self.node.show_automation_badge()
+                self.card.remove_property_by_key("Status")
         else:
+            self.node.hide_automation_badge()
+            self.card.remove_property_by_key("Status")
             self.card.remove_property_by_key("Source")
             self.card.remove_property_by_key("Hardware")
             self.card.remove_property_by_key("Model")

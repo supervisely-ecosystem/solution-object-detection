@@ -43,6 +43,19 @@ if "training_project" not in custom_data:
 else:
     training_project = api.project.get_info_by_id(custom_data["training_project"])
 
+if "train_collection" not in custom_data:
+    train_collection = api.entities_collection.create(training_project.id, "All_train")
+    custom_data["train_collection"] = train_collection.id
+    update_project = True
+else:
+    train_collection = api.entities_collection.get_info_by_id(custom_data["train_collection"])
+
+if "val_collection" not in custom_data:
+    val_collection = api.entities_collection.create(training_project.id, "All_val")
+    custom_data["val_collection"] = val_collection.id
+    update_project = True
+else:
+    val_collection = api.entities_collection.get_info_by_id(custom_data["val_collection"])
 
 if "labeling_collection" not in custom_data:
     labeling_collection = api.entities_collection.create(labeling_project.id, "Labeling Collection")

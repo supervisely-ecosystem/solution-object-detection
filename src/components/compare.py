@@ -267,9 +267,7 @@ class CompareNode(SolutionElement):
         )
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
-        return SolutionCard.Tooltip(
-            description=self.description, content=self._get_buttons()
-        )
+        return SolutionCard.Tooltip(description=self.description, content=self._get_buttons())
 
     def _get_buttons(self):
         if not hasattr(self, "_run_btn"):
@@ -295,7 +293,11 @@ class CompareNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._automate_btn.click(self.automation.modal.show)
+
+            @self._automate_btn.click
+            def show_automation_modal():
+                self.automation_modal.show()
+
         if not hasattr(self, "_tasks_history_btn"):
             self._tasks_history_btn = Button(
                 "Tasks History",
@@ -304,7 +306,11 @@ class CompareNode(SolutionElement):
                 plain=True,
                 button_type="text",
             )
-            self._tasks_history_btn.click(self.tasks_modal.show)
+
+            @self._tasks_history_btn.click
+            def show_tasks_history():
+                self.tasks_modal.show()
+
         return [
             self._run_btn,
             self._automate_btn,
@@ -344,36 +350,42 @@ class CompareNode(SolutionElement):
         """
         Sends a request to the backend to start the evaluation process.
         """
-        if len(self.evaluation_dirs) < 2:
-            logger.warning("Not enough evaluation directories provided for comparison.")
-            return
         try:
-            task_info = self.run_evaluator_session()
-            task_info["evaluation_dirs"] = self.evaluation_dirs
-            if task_info is None:
-                task_info["status"] = self.api.task.Status.ERROR
+            if len(self.evaluation_dirs) == 1:
+                logger.warning(
+                    "Only one evaluation directory provided. Cannot compare. Using the single directory for results."
+                )
+                self.result_dir = self.evaluation_dirs[0]
+                self.result_link = self._get_url_from_lnk_path(self.result_dir)
+            elif len(self.evaluation_dirs) < 2:
+                logger.warning("Not enough evaluation directories provided for comparison.")
+            else:
+                task_info = self.run_evaluator_session()
+                task_info["evaluation_dirs"] = self.evaluation_dirs
+                if task_info is None:
+                    task_info["status"] = self.api.task.Status.ERROR
+                    self.tasks_history.add_task(task_info)
+                    raise RuntimeError("Failed to start the evaluation task.")
+                task_id = task_info["id"]
+                response = self.api.task.send_request(
+                    task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.evaluation_dirs}
+                )
+                if "error" in response:
+                    task_info["status"] = self.api.task.Status.ERROR
+                    self.tasks_history.add_task(task_info)
+                    raise RuntimeError(f"Error in evaluation request: {response['error']}")
+                logger.info("Evaluation request sent successfully.")
+                self.result_dir = response.get("data")
+                self.result_link = self._get_url_from_lnk_path(self.result_dir)
+                # @ todo: find the best checkpoint from the evaluation results
+                # self._update_properties()
+                task_info["status"] = "completed"
+                task_info["result_dir"] = self.result_dir
+                task_info["result_link"] = abs_url(self.result_link)
                 self.tasks_history.add_task(task_info)
-                raise RuntimeError("Failed to start the evaluation task.")
-            task_id = task_info["id"]
-            response = self.api.task.send_request(
-                task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.evaluation_dirs}
-            )
-            if "error" in response:
-                task_info["status"] = self.api.task.Status.ERROR
-                self.tasks_history.add_task(task_info)
-                raise RuntimeError(f"Error in evaluation request: {response['error']}")
-            logger.info("Evaluation request sent successfully.")
-            self.result_dir = response.get("data")
-            self.result_link = self._get_url_from_lnk_path(self.result_dir)
-            # @ todo: find the best checkpoint from the evaluation results
-            # self._update_properties()
-            task_info["status"] = "completed"
-            task_info["result_dir"] = self.result_dir
-            task_info["result_link"] = abs_url(self.result_link)
-            self.tasks_history.add_task(task_info)
+                self.api.task.stop(task_id)
             for cb in self._finish_callbacks:
                 cb(self.result_dir, self.result_link)
-            self.api.task.stop(task_id)
             logger.info(f"Evaluation completed successfully. Task ID: {task_id}")
         except Exception as e:
             logger.error(f"Evaluation failed. {e}", exc_info=True)
@@ -433,6 +445,11 @@ class CompareNode(SolutionElement):
             if new_checkpoint_path:
                 logger.info(f"New best checkpoint path: {new_checkpoint_path}")
                 self.result_best_checkpoint = str(new_checkpoint_path)
+                self.evaluation_dirs = [self.evaluation_dirs[1]]
+        else:
+            logger.info(f"{primary_metric} of new model is worse: {metric_new} <= {metric_old}")
+            self.result_best_checkpoint = None
+            self.evaluation_dirs = [self.evaluation_dirs[0]]
         return new_model_better
 
     def _get_experiments_path(self, path: str) -> str:

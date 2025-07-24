@@ -239,7 +239,6 @@ class EvaluationNode(SolutionElement):
                 task_name="Solution: " + str(self.api.task_id),
             )
         except TimeoutError as e:
-            # TimeoutError: Task 48446 is not ready for API calls after 100 seconds.
             import re
 
             msg = str(e)
@@ -251,6 +250,9 @@ class EvaluationNode(SolutionElement):
             else:
                 logger.error(f"Model deployment timed out: {msg}")
             raise
+        except Exception as e:
+            logger.error(f"Failed to deploy model: {e}")
+            self._model = None
 
     @property
     def eval_session_info(self) -> int:
@@ -293,16 +295,17 @@ class EvaluationNode(SolutionElement):
                 "Model path is not set. Please set the model path before running the evaluation."
             )
             return
-        if not hasattr(self, "_eval_session_info") and not hasattr(self, "_model"):
-            # create threads for deployment and evaluation sessions and start them concurrently
-            deploy_thread = threading.Thread(target=self._deploy_model)
-            eval_thread = threading.Thread(target=self._start_evaluator_session)
-            deploy_thread.start()
-            eval_thread.start()
 
-            # wait for both threads to finish
-            deploy_thread.join()
-            eval_thread.join()
+        if not hasattr(self, "_model"):
+            deploy_thread = threading.Thread(target=self._deploy_model)
+            deploy_thread.start()
+
+        eval_thread = threading.Thread(target=self._start_evaluator_session)
+        eval_thread.start()
+
+        # wait for both threads to finish
+        eval_thread.join()
+        deploy_thread.join()
 
         # send the evaluation request in a new thread
         thread = threading.Thread(target=self._send_evaluation_request, daemon=True)

@@ -1,9 +1,9 @@
 import src.sly_globals as g
 import supervisely as sly
-from src.components.base_train import BaseTrainNode
+from src.components.base_train import BaseTrainNode, RTDETRv2TrainNode
 from src.components.evaluation_report import EvaluationReportNode
 
-train_node = BaseTrainNode(
+train_node = RTDETRv2TrainNode(
     api=g.api,
     project=g.training_project.id,
     title="Train RT-DETR-v2",
@@ -12,6 +12,9 @@ train_node = BaseTrainNode(
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-memory"),
     x=635,
     y=1850,
+)
+train_node.set_collection_ids(
+    train_collection_id=g.train_collection.id, val_collection_id=g.val_collection.id
 )
 
 overview_dummy = sly.solution.LinkNode(
@@ -55,6 +58,6 @@ eval_report_after_training = EvaluationReportNode(
     x=800,
     y=2210,
     icon=sly.app.widgets.Icons(
-        class_name="zmdi zmdi-collection-text", color="#1976D2", bg_color="#E3F2FD"
+        class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED"
     ),
 )

@@ -1,8 +1,8 @@
 from typing import Literal, Optional
 
 import supervisely as sly
-from supervisely.app.widgets import Icons, SolutionCard
 from supervisely.app.content import DataJson
+from supervisely.app.widgets import Icons, SolutionCard
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 
 
@@ -29,7 +29,11 @@ class EvaluationReportNode(SolutionElement):
         self.title = title
         self.description = description
         self.width = width
-        self.icon = icon
+        self.icon = icon or Icons(
+            class_name="zmdi zmdi-collection-text",
+            color="#FF00A6",
+            bg_color="#FFBCED",
+        )
         self.tooltip_position = tooltip_position
         super().__init__(*args, **kwargs)
 
@@ -57,7 +61,7 @@ class EvaluationReportNode(SolutionElement):
         """
         self._benchmark_dir = DataJson()[self.widget_id].get("benchmark_dir", None)
         return self._benchmark_dir
-    
+
     @benchmark_dir.setter
     def benchmark_dir(self, benchmark_dir: str):
         """
@@ -78,7 +82,7 @@ class EvaluationReportNode(SolutionElement):
             if hasattr(self, "card"):
                 self.card.link = ""
             return
-        
+
         self.benchmark_dir = benchmark_dir
         lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)

@@ -10,7 +10,9 @@ from src.nodes.experiment_nodes import (
 )
 from src.nodes.nodes import (
     auto_import,
+    automation_tasks,
     cloud_import,
+    definitions,
     input_project,
     labeling_performance,
     labeling_project_node,
@@ -18,6 +20,7 @@ from src.nodes.nodes import (
     queue,
     sampling,
     splits,
+    task_logs,
     training_project,
     versioning,
 )

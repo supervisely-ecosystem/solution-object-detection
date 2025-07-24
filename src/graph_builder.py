@@ -5,6 +5,9 @@ import supervisely as sly
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px", width="3000px")
 
 # * Add nodes to the graph
+graph_builder.add_node(n.automation_tasks)
+graph_builder.add_node(n.task_logs)
+graph_builder.add_node(n.definitions)
 graph_builder.add_node(n.cloud_import)
 graph_builder.add_node(n.auto_import)
 graph_builder.add_node(n.input_project)
@@ -29,7 +32,6 @@ graph_builder.add_node(n.send_email)
 graph_builder.add_node(n.comparison_report)
 graph_builder.add_node(n.redeploy_settings)
 graph_builder.add_node(n.deploy_custom_model_node)
-graph_builder.add_node(n.train_node)
 
 # * Add edges between nodes
 graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
@@ -85,7 +87,13 @@ graph_builder.add_edge(n.train_node, n.compare_node, end_socket="left", path="gr
 graph_builder.add_edge(n.re_eval, n.compare_node)
 graph_builder.add_edge(n.compare_node, n.send_email, end_socket="left", path="grid")
 graph_builder.add_edge(n.compare_node, n.comparison_report, end_socket="left", path="grid")
-graph_builder.add_edge(n.compare_node, n.redeploy_settings, start_socket="right", end_socket="left")
+graph_builder.add_edge(
+    n.compare_node,
+    n.redeploy_settings,
+    start_socket="right",
+    end_socket="left",
+    label="if new model is better",
+)
 graph_builder.add_edge(
     n.redeploy_settings,
     n.deploy_custom_model_node,

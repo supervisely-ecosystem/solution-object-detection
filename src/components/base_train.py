@@ -4,19 +4,19 @@ import supervisely.io.env as sly_env
 from supervisely import ProjectMeta
 from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
-from supervisely.api.task_api import TaskApi
 from supervisely.api.project_api import ProjectInfo
+from supervisely.api.task_api import TaskApi
 from supervisely.app.exceptions import show_dialog
 from supervisely.app.widgets import (
     Button,
+    Checkbox,
     Container,
     Dialog,
-    Select,
-    Checkbox,
-    InputNumber,
     Empty,
     Icons,
+    InputNumber,
     NewExperiment,
+    Select,
     SolutionCard,
     Text,
     Widget,
@@ -279,6 +279,19 @@ class BaseTrainNode(SolutionElement):
                 self.automation.CHECK_STATUS_JOB_ID,
                 task_id,
             )
+            for cb in self._train_started_cb:
+                if not callable(cb):
+                    logger.error(f"Train started callback {cb} is not callable.")
+                    continue
+                try:
+                    if cb.__code__.co_argcount == 3:
+                        cb(app_id, model_id, task_id)
+                    elif cb.__code__.co_argcount == 1:
+                        cb(task_id)
+                    else:
+                        cb()
+                except Exception as e:
+                    logger.error(f"Error in train started callback: {e}")
 
         @self.automation_apply_button.click
         def on_automation_apply_button_click():
@@ -312,19 +325,28 @@ class BaseTrainNode(SolutionElement):
         if task_info is not None:
             if task_info["status"] == TaskApi.Status.ERROR.value:
                 self.card.update_badge_by_key(key="Training", label="Failed", badge_type="error")
-                return
+                self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.CONSUMED.value:
                 self.card.update_badge_by_key(key="Training", label="Consumed", badge_type="warning")
-                return
             elif task_info["status"] == TaskApi.Status.QUEUED.value:
                 self.card.update_badge_by_key(key="Training", label="Queued", badge_type="warning")
-                return
-            elif task_info["status"] == TaskApi.Status.STOPPED.value:
+            elif task_info["status"] in [TaskApi.Status.STOPPED.value, TaskApi.Status.TERMINATING.value]:
                 self.card.update_badge_by_key(key="Training", label="Stopped", badge_type="warning")
-                return
+                self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.FINISHED.value:
                 self.card.update_badge_by_key(key="Training", label="Done", badge_type="success")
-                return
+                for cb in self._train_finished_cb:
+                    if not callable(cb):
+                        logger.error(f"Train finished callback {cb} is not callable.")
+                        continue
+                    try:
+                        if cb.__code__.co_argcount == 1:
+                            cb(task_id)
+                        else:
+                            cb()
+                    except Exception as e:
+                        logger.error(f"Error in train finished callback: {e}")
+                self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             else:
                 self.card.update_badge_by_key(key="Training", label="In progress", badge_type="info")
         else:

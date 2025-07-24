@@ -30,7 +30,7 @@ class EvaluationReportNode(SolutionElement):
         self.description = description
         self.width = width
         self.icon = icon or Icons(
-            class_name="zmdi zmdi-open-in-new",
+            class_name="zmdi zmdi-collection-text",
             color="#FF00A6",
             bg_color="#FFBCED",
         )

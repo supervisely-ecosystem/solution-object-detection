@@ -70,6 +70,13 @@ comparison_report.node.disable()
 
 redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
 deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
+api_inference_node = ApiInferenceNode(
+    "src/assets/api_inference.md",
+    x=2000,
+    y=2400,
+    tooltip_position="left",
+    markdown_title="Inference API Quickstart",
+)
 
 
 @re_eval.on_finish

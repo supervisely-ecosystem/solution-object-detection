@@ -282,6 +282,7 @@ class BaseTrainNode(SolutionElement):
 
         @self.automation_apply_button.click
         def on_automation_apply_button_click():
+            self.automation_modal.hide()
             enabled, _, _, sec = self.automation.get_automation_details()
             self.show_automation_info(enabled, sec)
             self.automation.apply(self._run_automated_task, sec, self.automation.CHECK_STATUS_JOB_ID)

@@ -1,9 +1,9 @@
 import src.sly_globals as g
 import supervisely as sly
-from src.components.base_train import BaseTrainNode
+from src.components.base_train import BaseTrainNode, RTDETRv2TrainNode
 from src.components.evaluation_report import EvaluationReportNode
 
-train_node = BaseTrainNode(
+train_node = RTDETRv2TrainNode(
     api=g.api,
     project=g.training_project.id,
     title="Train RT-DETR-v2",

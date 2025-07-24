@@ -1,26 +1,23 @@
-# здесь будет класс, которые будет отвечать за деплой модели, показывать информацию о ней
-
-
-from typing import Callable, List, Literal, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import supervisely.io.env as sly_env
 from supervisely import ProjectMeta
 from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
+from supervisely.api.task_api import TaskApi
 from supervisely.api.project_api import ProjectInfo
 from supervisely.app.exceptions import show_dialog
 from supervisely.app.widgets import (
-    AgentSelector,
     Button,
     Container,
     Dialog,
-    Field,
-    Flexbox,
+    Select,
+    Checkbox,
+    InputNumber,
+    Empty,
     Icons,
-    Input,
     NewExperiment,
     SolutionCard,
-    TasksHistory,
     Text,
     Widget,
 )
@@ -29,6 +26,7 @@ from supervisely.project.project_type import ProjectType
 from supervisely.sly_logger import logger
 from supervisely.solution.base_node import Automation, SolutionCardNode, SolutionElement
 from supervisely.solution.components.tasks_history import SolutionTasksHistory
+from supervisely.solution.utils import get_interval_period
 
 
 class TrainAutomation(Automation):
@@ -36,10 +34,51 @@ class TrainAutomation(Automation):
     CHECK_STATUS_JOB_ID = "check_train_status_job"
 
     def __init__(self):
+        self.apply_btn = Button("Apply", plain=True)
+        self.apply_text = Text("", status="text", color="gray")
+        self.widget = self._create_widget()
+        self.job_id = self.widget.widget_id
+        self.func = None
         super().__init__()
 
-    def _create_widget(self) -> Container:
-        pass
+    def _create_widget(self):
+        self.enabled_checkbox = Checkbox(content="Run every", checked=False)
+        self.num_input = InputNumber(min=1, value=60, debounce=1000, controls=False, size="mini")
+        self.num_input.disable()
+        self.period_select = Select(
+            [
+                Select.Item("min", "minutes"),
+                Select.Item("h", "hours"),
+                Select.Item("d", "days"),
+            ],
+            size="mini",
+        )
+        self.period_select.disable()
+        automate_cont = Container(
+            [
+                self.enabled_checkbox,
+                self.num_input,
+                self.period_select,
+                Empty(),
+            ],
+            direction="horizontal",
+            gap=3,
+            fractions=[1, 1, 1, 1],
+            style="align-items: center",
+        )
+        apply_btn = Container([self.apply_btn], style="align-items: flex-end")
+        self.apply_text.set("Run training first to save settings.", "warning")
+
+        @self.enabled_checkbox.value_changed
+        def on_automate_checkbox_change(is_checked: bool) -> None:
+            if is_checked:
+                self.num_input.enable()
+                self.period_select.enable()
+            else:
+                self.num_input.disable()
+                self.period_select.disable()
+
+        return Container([self.apply_text, automate_cont, apply_btn])
 
     def apply(self, func: Callable, sec: int, job_id: str, *args) -> None:
         self.scheduler.add_job(func, sec, job_id, True, *args)
@@ -50,6 +89,27 @@ class TrainAutomation(Automation):
             self.scheduler.remove_job(job_id)
             logger.info(f"Removed scheduled model training job with ID {job_id}.")
 
+    def get_automation_details(self) -> Tuple[bool, str, int, int]:
+        """
+        Get the automation details from the widget.
+        :return: Tuple with (enabled, period, interval, seconds)
+        """
+        enabled = self.enabled_checkbox.is_checked()
+        period = self.period_select.get_value()
+        interval = self.num_input.get_value()
+
+        if not enabled:
+            return False, None, None, None
+
+        if period == "h":
+            sec = interval * 60 * 60
+        elif period == "d":
+            sec = interval * 60 * 60 * 24
+        else:
+            sec = interval * 60
+        if sec == 0:
+            return False, None, None, None
+        return enabled, period, interval, sec
 
 class TrainTasksHistory(SolutionTasksHistory):
     def __init__(self, api: Api, title: str = "Tasks History"):
@@ -88,8 +148,9 @@ class BaseTrainGUI(Widget):
         self,
         api: Api,
         project: Union[ProjectInfo, int],
-        workspace_id: Optional[int] = None,
         team_id: Optional[int] = None,
+        workspace_id: Optional[int] = None,
+        frameworks: Optional[List[str]] = None,
         widget_id: Optional[str] = None,
     ):
         self.api = api
@@ -100,6 +161,7 @@ class BaseTrainGUI(Widget):
         )
         self.workspace_id = workspace_id or self.project.workspace_id
         self.team_id = team_id or self.project.team_id
+        self.frameworks = frameworks
         super().__init__(widget_id=widget_id)
         self.content = self._init_gui()
 
@@ -191,8 +253,12 @@ class BaseTrainNode(SolutionElement):
             self.tasks_history.tasks_modal,
             self.tasks_history.logs_modal,
             self.main_widget.content,
-            # self.automation_modal,
+            self.automation_modal,
         ]
+        
+        self._train_settings = None
+        self._previous_task_id = None
+
         self._train_started_cb = []
         self._train_finished_cb = []
         super().__init__(*args, **kwargs)
@@ -204,6 +270,9 @@ class BaseTrainNode(SolutionElement):
 
         @self.main_widget.content.app_started
         def _on_app_started(app_id: int, model_id: int, task_id: int):
+            self.main_widget.content.visible = False
+            self._previous_task_id = task_id
+            self._save_train_settings()
             self.automation.apply(
                 self._check_train_progress,
                 10,
@@ -211,15 +280,55 @@ class BaseTrainNode(SolutionElement):
                 task_id,
             )
 
+        @self.automation_apply_button.click
+        def on_automation_apply_button_click():
+            enabled, _, _, sec = self.automation.get_automation_details()
+            self.show_automation_info(enabled, sec)
+            self.automation.apply(self._run_automated_task, sec, self.automation.CHECK_STATUS_JOB_ID)
+
+
+    def _save_train_settings(self):
+        """
+        Extract training configuration from the embedded NewExperiment widget and store it
+        inside the node so that it can be reused later
+        """
+        try:
+            self._train_settings = self.main_widget.content.get_train_settings()
+            logger.info("Training settings saved.")
+        except Exception as e:
+            logger.warning(f"Failed to save training settings: {e}")
+
+    @property
+    def train_settings(self):
+        """Returns the most recently saved training settings, or None if nothing saved."""
+        return self._train_settings
+
     def _check_train_progress(self, task_id: int):
-        # if app starts
         #@ TODO: get train status from the task (fix send request on web progress status message)
         # train_status = self.api.task.send_request(task_id, "train_status", {})
         # print(f"Train status: {train_status}")
-        self.card.update_badge_by_key(key="In progress", label="Training", badge_type="info")
-        
-        # if app failed
-        # self.card.remove_badge_by_key("Training")
+
+        task_info = self.api.task.get_info_by_id(task_id)
+        if task_info is not None:
+            if task_info["status"] == TaskApi.Status.ERROR.value:
+                self.card.update_badge_by_key(key="Training", label="Failed", badge_type="error")
+                return
+            elif task_info["status"] == TaskApi.Status.CONSUMED.value:
+                self.card.update_badge_by_key(key="Training", label="Consumed", badge_type="warning")
+                return
+            elif task_info["status"] == TaskApi.Status.QUEUED.value:
+                self.card.update_badge_by_key(key="Training", label="Queued", badge_type="warning")
+                return
+            elif task_info["status"] == TaskApi.Status.STOPPED.value:
+                self.card.update_badge_by_key(key="Training", label="Stopped", badge_type="warning")
+                return
+            elif task_info["status"] == TaskApi.Status.FINISHED.value:
+                self.card.update_badge_by_key(key="Training", label="Done", badge_type="success")
+                return
+            else:
+                self.card.update_badge_by_key(key="Training", label="In progress", badge_type="info")
+        else:
+            logger.error(f"Task info is not found for task_id: {task_id}")
 
     def _create_card(self) -> SolutionCard:
         return SolutionCard(
@@ -332,6 +441,12 @@ class BaseTrainNode(SolutionElement):
         pass
 
   
+    # Automation
+    @property
+    def automation_apply_button(self) -> Button:
+        """Get the apply training button"""
+        return self.automation.apply_btn
+    
     @property
     def automation_modal(self):
         if not hasattr(self, "_automation_modal"):
@@ -355,14 +470,162 @@ class BaseTrainNode(SolutionElement):
 
         @btn.click
         def _show_automate_dialog():
+            if self._previous_task_id is None:
+                self.automation.apply_text.set("Run training first to save settings.", "warning")
+                self.automation.apply_btn.disable()
+            else:
+                self.automation.apply_text.set("Schedule automatic model training on the training data. <br> <strong>Note:</strong> The settings from the last training session will be used.", "text")
+                self.automation.apply_btn.enable()
             self.automation_modal.show()
 
         return btn
     
-    def _create_automation_modal(self):
+    def _create_automation_modal(self) -> Dialog:
         return Dialog(
             title="Automate Training",
-            content=Text("Settings from previous training session will be used."),
+            content=self.automation.widget,
             size="tiny",
         )
+
+    def show_automation_info(self, enabled, sec):
+        period, interval = get_interval_period(sec)
+        if enabled is True:
+            self.node.show_automation_badge()
+            self.card.update_property("Run every", f"{interval} {period}", highlight=True)
+        else:
+            self.node.hide_automation_badge()
+            self.card.remove_property_by_key("Run every")
+
+    def _run_automated_task(self) -> None:
+        if self._previous_task_id is None:
+            logger.error("No previous task id found. Run training first to save settings.")
+            return
+        
+        try:
+            task_id = self._start_automated_training()
+            if task_id is None:
+                logger.error(f"Task info is not found for task_id: {self._previous_task_id}")
+                return
+        except Exception as e:
+            logger.error(f"Failed to run automated training task: {e}")
+            return
+        self.automation.apply(self._check_train_progress, 10, self.automation.CHECK_STATUS_JOB_ID, task_id)
+
+    def _start_automated_training(self) -> Optional[int]:
+        task_info = self.api.task.get_info_by_id(self._previous_task_id)
+        if task_info is None:
+            return None
+        
+        description = f"Automated training run from Solution app. Task ID: {self._previous_task_id}"
+        agent_id = task_info["agentId"]
+        workspace_id = task_info["workspaceId"]
+        params = task_info["meta"]["params"]
+
+        app_info = task_info["meta"]["app"]
+        module_id = app_info["moduleId"]
+        is_branch = app_info["isBranch"]
+        version = app_info["version"]
+
+        session_info = self.api.app.start(
+            agent_id=agent_id,
+            module_id=module_id,
+            workspace_id=workspace_id,
+            description=description,
+            params=params,
+            app_version=version,
+            is_branch=is_branch,
+            task_name=description
+        )
+        return session_info.task_id
     # -------------------------------------- #
+
+
+# Framework classes
+
+class RTDETRv2TrainGUI(BaseTrainGUI):
+    _PREDEFINED_FRAMEWORKS = ["RT-DETRv2"]
+
+    def __init__(
+        self,
+        api: Api,
+        project: Union[ProjectInfo, int],
+        workspace_id: Optional[int] = None,
+        team_id: Optional[int] = None,
+        widget_id: Optional[str] = None,
+    ):
+        super().__init__(
+            api=api,
+            project=project,
+            workspace_id=workspace_id,
+            team_id=team_id,
+            frameworks=self._PREDEFINED_FRAMEWORKS,
+            widget_id=widget_id,
+        )
+
+
+class RTDETRv2TrainNode(BaseTrainNode):
+    gui_class = RTDETRv2TrainGUI
+    title = "Train RT-DETRv2"
+    description = (
+        "Train an RT-DETRv2 model on the selected project using the last saved training "
+        "settings. The framework is fixed to RT-DETRv2."
+    )
+
+class YOLOTrainGUI(BaseTrainGUI):
+    _PREDEFINED_FRAMEWORKS = ["YOLO"]
+
+    def __init__(
+        self,
+        api: Api,
+        project: Union[ProjectInfo, int],
+        workspace_id: Optional[int] = None,
+        team_id: Optional[int] = None,
+        widget_id: Optional[str] = None,
+    ):
+        super().__init__(
+            api=api,
+            project=project,
+            workspace_id=workspace_id,
+            team_id=team_id,
+            frameworks=self._PREDEFINED_FRAMEWORKS,
+            widget_id=widget_id,
+        )
+
+
+class YOLOTrainNode(BaseTrainNode):
+    gui_class = YOLOTrainGUI
+    title = "Train YOLO"
+    description = (
+        "Train YOLO model on the selected project using the last saved training "
+        "settings. The framework is fixed to YOLO."
+    )
+
+class DEIMTrainGUI(BaseTrainGUI):
+    _PREDEFINED_FRAMEWORKS = ["DEIM"]
+
+    def __init__(
+        self,
+        api: Api,
+        project: Union[ProjectInfo, int],
+        workspace_id: Optional[int] = None,
+        team_id: Optional[int] = None,
+        widget_id: Optional[str] = None,
+    ):
+        super().__init__(
+            api=api,
+            project=project,
+            workspace_id=workspace_id,
+            team_id=team_id,
+            frameworks=self._PREDEFINED_FRAMEWORKS,
+            widget_id=widget_id,
+        )
+
+
+class DEIMTrainNode(BaseTrainNode):
+    gui_class = DEIMTrainGUI
+    title = "Train DEIM"
+    description = (
+        "Train DEIM model on the selected project using the last saved training "
+        "settings. The framework is fixed to DEIM."
+    )
+# -------------------------------------- #

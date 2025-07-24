@@ -1,4 +1,5 @@
 from src.nodes.experiment_nodes import (
+    api_inference_node,
     compare_node,
     comparison_report,
     deploy_custom_model_node,

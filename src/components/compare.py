@@ -237,14 +237,14 @@ class CompareNode(SolutionElement):
         return automation_interval
 
     @property
-    def evaluation_dirs(self) -> list[str]:
+    def evaluation_dirs(self) -> List[str]:
         """
         Returns the list of evaluation directories.
         """
         return self._eval_dirs
 
     @evaluation_dirs.setter
-    def evaluation_dirs(self, value: list[str]):
+    def evaluation_dirs(self, value: List[str]):
         """
         Sets the evaluation directories and enables the run button if directories are provided.
         """

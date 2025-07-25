@@ -588,13 +588,14 @@ class BaseDeployNode(SolutionElement):
             self.card.remove_property_by_key("Agent")
             self.card.remove_property_by_key("GPU Memory")
 
-        self._update_properties()
+        # self._update_properties()
 
     def _update_properties(self, deploy_info: Optional[Dict] = None) -> None:
         """
         Updates the properties of the card with the current model and agent information.
         """
         if self.main_widget.model is not None:
+            self.refresh_memory_usage_info()
             deploy_info = deploy_info or self._get_deployed_model_info()[1]
             self.card.update_property("Source", deploy_info["model_source"])
             self.card.update_property("Hardware", deploy_info["hardware"])

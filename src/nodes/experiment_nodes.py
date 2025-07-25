@@ -1,7 +1,10 @@
+import src.nodes.rt_detr_nodes as rt_detr
+import src.nodes.yolo_nodes as yolo
+import src.sly_functions as f
 import src.sly_globals as g
 import supervisely as sly
-from src.components import BaseDeployNode
 from src.components.all_experiments import AllExperimentsNode
+from src.components.api_inference import ApiInferenceNode
 from src.components.compare import CompareNode
 from src.components.custom_model import DeployCustomModel
 from src.components.evaluation import EvaluationNode
@@ -11,7 +14,7 @@ from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
 experiments = AllExperimentsNode(x=1300, y=1850)
-experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
+# experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
 
 evaluation_report = EvaluationReportNode(
     api=g.api,
@@ -27,7 +30,7 @@ evaluation_report.node.disable()
 
 re_eval = EvaluationNode(
     api=g.api,
-    project=g.project,
+    project=g.training_project,
     collection=g.val_collection,
     x=1265,
     y=2025,
@@ -47,10 +50,10 @@ compare_node = CompareNode(
     y=2300,
     tooltip_position="left",
 )
-compare_node.evaluation_dirs = [
-    "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
-    "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
-]
+# compare_node.evaluation_dirs = [
+#     "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
+#     "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
+# ]
 
 send_email = SendEmailNode(width=200, x=1500, y=2400)
 
@@ -84,7 +87,6 @@ def on_re_eval_finished(res_dir) -> None:
     evaluation_report.set_benchmark_dir(res_dir)
     evaluation_report.node.enable()
     compare_node.evaluation_dirs.append(res_dir)
-    compare_node.evaluation_dirs.append(res_dir) # TODO: temp fix
     compare_node.run()
 
 
@@ -102,3 +104,49 @@ def on_compare_finished(res_dir, res_link) -> None:
         deploy_custom_model_node.deploy(
             model=compare_node.result_best_checkpoint, agent_id=agent_id
         )
+
+
+@rt_detr.train_node.on_train_finished
+def _on_train_finished(task_id: int):
+    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_id)
+    if report_eval_dir is None:
+        sly.logger.error(f"Evaluation directory for task {task_id} not found.")
+        return
+
+    # * Add evaluation report directory to the compare node
+    compare_node.evaluation_dirs.append(report_eval_dir)
+
+    # * Update evaluation report after training
+    rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir)
+    rt_detr.eval_report_after_training.node.enable()
+
+    if experiments.best_model:
+        # * Start re-evaluation the best model on new validation set
+        re_eval.set_model_path(experiments.best_model)
+        re_eval.run()
+    elif model_path := f._get_best_model_from_task_info(g.api, task_id):
+        # * Set best model from task info if not set yet
+        experiments.set_best_model(model_path)
+
+
+@yolo.train_node.on_train_finished
+def _on_train_finished(task_id: int):
+    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_id)
+    if report_eval_dir is None:
+        sly.logger.error(f"Evaluation directory for task {task_id} not found.")
+        return
+
+    # * Add evaluation report directory to the compare node
+    compare_node.evaluation_dirs.append(report_eval_dir)
+
+    # * Update evaluation report after training
+    yolo.yolo_eval_report_after_training.set_benchmark_dir(report_eval_dir)
+    yolo.yolo_eval_report_after_training.node.enable()
+
+    if experiments.best_model:
+        # * Start re-evaluation the best model on new validation set
+        re_eval.set_model_path(experiments.best_model)
+        re_eval.run()
+    elif model_path := f._get_best_model_from_task_info(g.api, task_id):
+        # * Set best model from task info if not set yet
+        experiments.set_best_model(model_path)

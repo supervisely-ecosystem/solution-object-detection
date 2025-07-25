@@ -97,15 +97,6 @@ def _on_move_labeled_automation_btn_click():
     n.move_labeled.apply_automation(_move_labeled_images)
 
 
-@n.train_node.on_train_finished
-def _on_train_finished(task_id: int):
-    task_info = g.api.task.get_info_by_id(task_id)
-    artifacts_dir = task_info["meta"]["output"]["experiment"]["data"]["artifacts_dir"]
-    best_checkpoint = task_info["meta"]["output"]["experiment"]["data"]["best_checkpoint"]
-    model_path = os.path.join(artifacts_dir, "checkpoints", best_checkpoint)
-    n.re_eval.set_model_path(model_path)
-    n.re_eval.run()
-
 # # * Restore data and state if available
 sly.app.restore_data_state(g.task_id)
 

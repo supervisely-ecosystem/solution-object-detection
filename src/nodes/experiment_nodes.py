@@ -13,7 +13,7 @@ from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
-experiments = AllExperimentsNode(x=1300, y=1850)
+experiments = AllExperimentsNode(x=1300, y=1850, project_id=g.project.id, task_type="detection")
 # experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
 
 evaluation_report = EvaluationReportNode(

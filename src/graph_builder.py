@@ -5,34 +5,53 @@ import supervisely as sly
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px", width="3000px")
 
 # * Add nodes to the graph
+# common nodes
 graph_builder.add_node(n.automation_tasks)
 graph_builder.add_node(n.task_logs)
 graph_builder.add_node(n.definitions)
+
+# input nodes
 graph_builder.add_node(n.cloud_import)
 graph_builder.add_node(n.auto_import)
 graph_builder.add_node(n.input_project)
 graph_builder.add_node(n.sampling)
+
+# labeling nodes
 graph_builder.add_node(n.labeling_project_node)
 graph_builder.add_node(n.queue)
 graph_builder.add_node(n.labeling_performance)
+
+# EXPERIMENT NODES:
+# - training preparation nodes
 graph_builder.add_node(n.splits)
 graph_builder.add_node(n.move_labeled)
 graph_builder.add_node(n.training_project)
 graph_builder.add_node(n.versioning)
-graph_builder.add_node(n.train_node)
-graph_builder.add_node(n.experiments)
-graph_builder.add_node(n.evaluation_report)
-graph_builder.add_node(n.re_eval)
-graph_builder.add_node(n.overview_dummy)
-graph_builder.add_node(n.eval_report_after_training)
-graph_builder.add_node(n.training_charts_dummy)
-graph_builder.add_node(n.checkpoints_folder)
-graph_builder.add_node(n.compare_node)
-graph_builder.add_node(n.send_email)
-graph_builder.add_node(n.comparison_report)
-graph_builder.add_node(n.redeploy_settings)
-graph_builder.add_node(n.deploy_custom_model_node)
-graph_builder.add_node(n.api_inference_node)
+
+# - RT-DETR training nodes
+graph_builder.add_node(n.rt_detr.train_node)
+graph_builder.add_node(n.rt_detr.overview_dummy)
+graph_builder.add_node(n.rt_detr.eval_report_after_training)
+graph_builder.add_node(n.rt_detr.training_charts_dummy)
+graph_builder.add_node(n.rt_detr.checkpoints_folder)
+
+# - YOLO training nodes
+graph_builder.add_node(n.yolo.train_node)
+graph_builder.add_node(n.yolo.overview_dummy)
+graph_builder.add_node(n.yolo.eval_report_after_training)
+graph_builder.add_node(n.yolo.training_charts_dummy)
+graph_builder.add_node(n.yolo.checkpoints_folder)
+
+# - common experiment nodes
+graph_builder.add_node(n.experiments.re_eval)
+graph_builder.add_node(n.experiments.evaluation_report)
+graph_builder.add_node(n.experiments.experiments)
+graph_builder.add_node(n.experiments.compare_node)
+graph_builder.add_node(n.experiments.send_email)
+graph_builder.add_node(n.experiments.comparison_report)
+graph_builder.add_node(n.experiments.redeploy_settings)
+graph_builder.add_node(n.experiments.deploy_custom_model_node)
+graph_builder.add_node(n.experiments.api_inference_node)
 
 # * Add edges between nodes
 graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
@@ -53,56 +72,108 @@ graph_builder.add_edge(
 graph_builder.add_edge(n.splits, n.move_labeled)
 graph_builder.add_edge(n.move_labeled, n.training_project)
 graph_builder.add_edge(n.training_project, n.versioning)
-graph_builder.add_edge(n.versioning, n.train_node)
-graph_builder.add_edge(n.experiments, n.re_eval, path="grid", label="best model overall")
-graph_builder.add_edge(n.re_eval, n.evaluation_report, end_socket="left", path="grid")
-graph_builder.add_edge(n.train_node, n.checkpoints_folder, end_socket="left", path="grid")
+graph_builder.add_edge(n.versioning, n.rt_detr.train_node)
+graph_builder.add_edge(n.versioning, n.yolo.train_node, path="grid")
 graph_builder.add_edge(
-    n.train_node,
-    n.overview_dummy,
+    n.experiments.experiments,
+    n.experiments.re_eval,
+    path="grid",
+    label="best model overall",
+)
+graph_builder.add_edge(
+    n.experiments.re_eval, n.experiments.evaluation_report, end_socket="left", path="grid"
+)
+graph_builder.add_edge(
+    n.rt_detr.train_node, n.rt_detr.checkpoints_folder, end_socket="left", path="grid"
+)
+graph_builder.add_edge(
+    n.rt_detr.train_node,
+    n.rt_detr.overview_dummy,
     end_socket="left",
     path="grid",
 )
 graph_builder.add_edge(
-    n.train_node,
-    n.training_charts_dummy,
+    n.rt_detr.train_node,
+    n.rt_detr.training_charts_dummy,
     end_socket="left",
     path="grid",
 )
 graph_builder.add_edge(
-    n.train_node,
-    n.eval_report_after_training,
+    n.rt_detr.train_node,
+    n.rt_detr.eval_report_after_training,
     end_socket="left",
     path="grid",
 )
 graph_builder.add_edge(
-    n.train_node,
-    n.experiments,
+    n.rt_detr.train_node,
+    n.experiments.experiments,
     start_socket="right",
     end_socket="left",
     path="grid",
     dash=True,
     label="register experiments",
 )
-graph_builder.add_edge(n.train_node, n.compare_node, end_socket="left", path="grid")
-graph_builder.add_edge(n.re_eval, n.compare_node)
-graph_builder.add_edge(n.compare_node, n.send_email, end_socket="left", path="grid")
-graph_builder.add_edge(n.compare_node, n.comparison_report, end_socket="left", path="grid")
 graph_builder.add_edge(
-    n.compare_node,
-    n.redeploy_settings,
+    n.rt_detr.train_node, n.experiments.compare_node, end_socket="left", path="grid"
+)
+graph_builder.add_edge(n.yolo.train_node, n.yolo.checkpoints_folder, end_socket="left", path="grid")
+graph_builder.add_edge(
+    n.yolo.train_node,
+    n.yolo.overview_dummy,
+    end_socket="left",
+    path="grid",
+)
+graph_builder.add_edge(
+    n.yolo.train_node,
+    n.yolo.training_charts_dummy,
+    end_socket="left",
+    path="grid",
+)
+graph_builder.add_edge(
+    n.yolo.train_node,
+    n.yolo.eval_report_after_training,
+    end_socket="left",
+    path="grid",
+)
+graph_builder.add_edge(
+    n.yolo.train_node,
+    n.rt_detr.train_node,
+    start_socket="right",
+    end_socket="left",
+    path="grid",
+    end_plug="behind",
+    dash=True,
+)
+graph_builder.add_edge(
+    n.yolo.train_node, n.experiments.compare_node, end_socket="left", path="grid"
+)
+graph_builder.add_edge(n.experiments.re_eval, n.experiments.compare_node)
+graph_builder.add_edge(
+    n.experiments.compare_node, n.experiments.send_email, end_socket="left", path="grid"
+)
+graph_builder.add_edge(
+    n.experiments.compare_node, n.experiments.comparison_report, end_socket="left", path="grid"
+)
+graph_builder.add_edge(
+    n.experiments.compare_node,
+    n.experiments.redeploy_settings,
     start_socket="right",
     end_socket="left",
     label="if new model is better",
 )
 graph_builder.add_edge(
-    n.redeploy_settings,
-    n.deploy_custom_model_node,
+    n.experiments.redeploy_settings,
+    n.experiments.deploy_custom_model_node,
     start_socket="right",
     end_socket="right",
     path="grid",
 )
-graph_builder.add_edge(n.redeploy_settings, n.api_inference_node, end_socket="left", path="grid")
+graph_builder.add_edge(
+    n.experiments.redeploy_settings,
+    n.experiments.api_inference_node,
+    end_socket="left",
+    path="grid",
+)
 
 # * Build the layout
 layout = graph_builder.build()

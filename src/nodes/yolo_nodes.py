@@ -1,28 +1,26 @@
 import src.sly_globals as g
 import supervisely as sly
-from src.components.base_train import BaseTrainNode, RTDETRv2TrainNode
+from src.components.base_train import YOLOTrainNode
 from src.components.evaluation_report import EvaluationReportNode
 
-
-train_node = RTDETRv2TrainNode(
+train_node = YOLOTrainNode(
     api=g.api,
     project=g.training_project.id,
-    title="Train RT-DETR-v2",
+    title="Train YOLO",
     description="Train the model on the labeled data from the Training Project. ",
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-memory"),
-    x=635,
+    x=235,
     y=1850,
 )
 train_node.set_collection_ids(
     train_collection_id=g.train_collection.id, val_collection_id=g.val_collection.id
 )
-
 overview_dummy = sly.solution.LinkNode(
     title="Overview + how to use model",
     description="Quick access to the overview of the model and how to use it for inference. ",
     link="",
     width=250,
-    x=800,
+    x=400,
     y=2000,
     icon=sly.app.widgets.Icons(
         class_name="zmdi zmdi-open-in-new", color="#1976D2", bg_color="#E3F2FD"
@@ -34,7 +32,7 @@ training_charts_dummy = sly.solution.LinkNode(
     description="Quick access to the training charts of the training session. ",
     link="",
     width=250,
-    x=800,
+    x=400,
     y=2070,
     icon=sly.app.widgets.Icons(
         class_name="zmdi zmdi-open-in-new", color="#1976D2", bg_color="#E3F2FD"
@@ -46,7 +44,7 @@ checkpoints_folder = sly.solution.LinkNode(
     description="View the folder containing the model checkpoints.",
     link="",
     width=200,
-    x=800,
+    x=400,
     y=2140,
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-folder", color="#1976D2", bg_color="#E3F2FD"),
 )
@@ -58,7 +56,7 @@ eval_report_after_training = EvaluationReportNode(
     title="Evaluation Report",
     description="Quick access to the evaluation report of the model after training. The report contains the model performance metrics and visualizations.",
     width=200,
-    x=800,
+    x=400,
     y=2210,
     icon=sly.app.widgets.Icons(
         class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED"

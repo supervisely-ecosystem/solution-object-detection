@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from supervisely import logger, timeit
 from supervisely.api.api import Api
@@ -79,7 +79,7 @@ class EvaluationNode(SolutionElement):
         self,
         api: Api,
         project: Union[int, ProjectInfo],
-        dataset_ids: Optional[list[int]] = None,
+        dataset_ids: Optional[List[int]] = None,
         collection: Union[int, str] = None,
         x: int = 0,
         y: int = 0,
@@ -100,18 +100,17 @@ class EvaluationNode(SolutionElement):
         self.project = (
             project if isinstance(project, ProjectInfo) else api.project.get_info_by_id(project)
         )
-        if dataset_ids or collection:
-            if not bool(dataset_ids) ^ bool(collection):
-                raise ValueError("Either dataset_ids or collection must be provided, but not both.")
+        if not bool(dataset_ids) ^ bool(collection):
+            raise ValueError("Either dataset_ids or collection must be provided, but not both.")
         self.dataset_ids = dataset_ids
         self.collection = None
         try:
-            if isinstance(collection, str):
-                self.collection = api.entities_collection.get_info_by_name(project.id, collection)
-            elif isinstance(collection, int):
+            if isinstance(collection, int):
                 self.collection = api.entities_collection.get_info_by_id(collection)
-            else:
+            elif collection is None:
                 raise TypeError("Collection must be either a string (name) or an integer (ID).")
+            else:
+                self.collection = collection
         except Exception as e:
             logger.warning(f"Failed to get collection info: {e}")
 
@@ -234,7 +233,6 @@ class EvaluationNode(SolutionElement):
         try:
             self._model = self.api.nn.deploy(
                 model=self._model_path,
-                device="cpu",  # for now
                 workspace_id=self.project.workspace_id,
                 agent_id=self._get_agent(),
                 task_name="Solution: " + str(self.api.task_id),
@@ -290,29 +288,35 @@ class EvaluationNode(SolutionElement):
             )
         self._eval_session_info = task_info_json
 
-    def run(self):
+    def run(self, skip_cb: bool = False):
+        """
+        Starts the evaluation process by deploying the model and starting the evaluator session.
+        :param skip_cb: If True, skips the finish callbacks.
+        """
         if not hasattr(self, "_model_path"):
             logger.warning(
                 "Model path is not set. Please set the model path before running the evaluation."
             )
             return
-
-        if not hasattr(self, "_model"):
-            deploy_thread = threading.Thread(target=self._deploy_model)
-            deploy_thread.start()
-
+        # create threads for deployment and evaluation sessions and start them concurrently
+        deploy_thread = threading.Thread(target=self._deploy_model)
         eval_thread = threading.Thread(target=self._start_evaluator_session)
+        deploy_thread.start()
         eval_thread.start()
 
         # wait for both threads to finish
-        eval_thread.join()
         deploy_thread.join()
+        eval_thread.join()
 
         # send the evaluation request in a new thread
-        thread = threading.Thread(target=self._send_evaluation_request, daemon=True)
+        thread = threading.Thread(
+            target=self._send_evaluation_request,
+            daemon=True,
+            kwargs={"skip_cb": skip_cb},
+        )
         thread.start()
 
-    def _send_evaluation_request(self):
+    def _send_evaluation_request(self, skip_cb: bool = False):
         session_info = self.eval_session_info
         data = {
             "session_id": self.model.task_id,
@@ -336,14 +340,26 @@ class EvaluationNode(SolutionElement):
         self.task_history.add_task(session_info)
         if error:
             logger.error(f"Error during evaluation: {error}")
-            self.node.show_failed_badge()
         elif res_dir:
-            self.node.show_finished_badge()
-            for cb in self._finish_callbacks:
-                cb(res_dir)
+            if not skip_cb:
+                for cb in self._finish_callbacks:
+                    if not callable(cb):
+                        logger.error(f"Finish callback {cb} is not callable.")
+                        continue
+                    try:
+                        if cb.__code__.co_argcount == 1:
+                            cb(res_dir)
+                        else:
+                            cb()
+                    except Exception as e:
+                        logger.error(f"Error in finish callback: {e}")
 
         self._run_btn.enable()
         self.hide_in_progress_badge()
+
+        # stop the evaluation and deployment tasks
+        self.api.task.stop(self.eval_session_info["id"])
+        self.api.task.stop(self.model.task_id)
 
     def on_finish(self, fn):
         self._finish_callbacks.append(fn)
@@ -395,8 +411,7 @@ class EvaluationNode(SolutionElement):
             self.card.update_property(**prop)
 
     def show_in_progress_badge(self) -> None:
-        badge = self.card.Badge("🏃‍♂️", "Evaluation...", "info", True)
-        self.card.add_badge(badge)
+        self.card.update_badge_by_key(key="Status", label="Evaluation...", badge_type="warning")
 
     def hide_in_progress_badge(self) -> None:
-        self.card.remove_badge_by_key("Evaluation...")
+        self.card.remove_badge_by_key("Status")

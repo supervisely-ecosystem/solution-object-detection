@@ -1,3 +1,4 @@
+from typing import Optional
 from supervisely._utils import abs_url, is_development
 from supervisely.app.widgets import Icons
 from supervisely.solution import LinkNode
@@ -8,12 +9,20 @@ class AllExperimentsNode(LinkNode):
         self,
         x: int = 0,
         y: int = 0,
+        project_id: Optional[int] = None,
+        task_type: Optional[str] = None, # e.g. "detection", "segmentation", "instance"
         *args,
         **kwargs,
     ):
         title = "All Experiments"
         description = "Track all experiments in one place. The best model for comparison will be selected from the list of experiments based on the primary metric (mAP for detection, IoU for semantic segmentation)."
         link = abs_url("/nn/experiments") if is_development() else "/nn/experiments"
+        if project_id is not None or task_type is not None:
+            link += "?"
+            if project_id is not None:
+                link += f"projects={project_id}"
+            if task_type is not None:
+                link += f"&tasks={task_type}"
         icon = Icons(class_name="zmdi zmdi-chart", color="#1976D2", bg_color="#E3F2FD")
 
         super().__init__(
@@ -52,6 +61,10 @@ class AllExperimentsNode(LinkNode):
         """
         if not isinstance(model_path, str):
             raise ValueError("Best model must be a string representing the model path.")
+        if not model_path.startswith("/"):
+            raise ValueError(
+                "Best model should be from Team Files. Path must start with '/'. E.g. '/experiments/2730_my_project/48650_YOLO/checkpoints/best.pt'."
+            )
         self._best_model = model_path
         self._update_properties()
 
@@ -60,12 +73,22 @@ class AllExperimentsNode(LinkNode):
         Update the properties of the node.
         This method can be overridden to customize the node's behavior.
         """
+        if self.best_model:
+            model_name = self._best_model.split("/")[-1]
+            link = (
+                abs_url(f"/files/?path={self.best_model}")
+                if is_development()
+                else f"/files/?path={self.best_model}"
+            )
+        else:
+            model_name = "Not set"
+            link = None
         if self._best_model:
             new_prop = {
                 "key": "Best Model",
-                "value": self._best_model if self._best_model else "Not set",
+                "value": model_name,
                 "highlight": False,
-                "link": True,
+                "link": link,
             }
             self.card.update_property(**new_prop)
         else:

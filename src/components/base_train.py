@@ -4,8 +4,10 @@ import supervisely.io.env as sly_env
 from supervisely import ProjectMeta
 from supervisely.annotation.obj_class import ObjClass
 from supervisely.api.api import Api
+from supervisely.api.entities_collection_api import CollectionTypeFilter
 from supervisely.api.project_api import ProjectInfo
 from supervisely.api.task_api import TaskApi
+from supervisely.app.content import DataJson
 from supervisely.app.exceptions import show_dialog
 from supervisely.app.widgets import (
     Button,
@@ -115,30 +117,35 @@ class TrainAutomation(Automation):
 class TrainTasksHistory(SolutionTasksHistory):
     def __init__(self, api: Api, title: str = "Tasks History"):
         super().__init__(api, title)
-        self.tasks_history.table_columns = [
+        self.tasks_history._table_columns = [
             "Task ID",
-            "Model Name",
+            "Model ID",
             "Started At",
             "Status",
-            "Hardware",
-            "Device",
-            # "Classes Count",
+            "Agent ID",
+            "Classes Count",
             "Images Count",
-            "Train Collection",
-            "Validation Collection",
         ]
-        self.tasks_history.table_columns_keys = [
-            ["id"],
-            ["model_name"],
+        self.tasks_history._columns_keys = [
+            ["task_info", "id"],
+            ["model_id"],
             ["task_info", "created_at"],
             ["status"],
-            ["hardware"],
-            ["device"],
-            # ["classes_count"],
+            ["agent_id"],
+            ["classes_count"],
             ["images_count"],
-            ["train_collection_name"],
-            ["validation_collection_name"],
         ]
+
+    def update_task_status(self, task_id: int, status: str):
+        tasks = self.tasks_history.get_tasks()
+        task = None
+        for row in tasks:
+            if row["id"] == task_id:
+                task = row
+                row["status"] = status
+                self.tasks_history.update_task(task_id=task_id, task=task)
+                return
+        raise KeyError(f"Task with ID {task_id} not found in the task history.")
 
 
 class BaseTrainGUI(Widget):
@@ -274,6 +281,34 @@ class BaseTrainNode(SolutionElement):
             self.main_widget.content.visible = False
             self._previous_task_id = task_id
             self._save_train_settings()
+
+            # add task to tasks history
+            task_info = self.api.task.get_info_by_id(task_id)
+
+            train_collection = self.main_widget.content.train_collections
+            train_collection = train_collection[0] if train_collection else None
+            val_collection = self.main_widget.content.val_collections
+            val_collection = val_collection[0] if val_collection else None
+
+            images_count = "N/A"
+            if train_collection and val_collection:
+                train_imgs = self.api.entities_collection.get_items(
+                    train_collection, CollectionTypeFilter.DEFAULT
+                )
+                val_imgs = self.api.entities_collection.get_items(
+                    val_collection, CollectionTypeFilter.DEFAULT
+                )
+                images_count = f"train: {len(train_imgs)}, val: {len(val_imgs)}"
+            task = {
+                "task_info": task_info,
+                "model_id": self.main_widget.content.model_id,
+                "status": "started",
+                "agent_id": self.main_widget.content.agent_id,
+                "classes_count": len(self.main_widget.content.classes),
+                "images_count": images_count,
+            }
+            self.tasks_history.add_task(task=task)
+
             self.automation.apply(
                 self._check_train_progress,
                 10,
@@ -327,22 +362,20 @@ class BaseTrainNode(SolutionElement):
         task_info = self.api.task.get_info_by_id(task_id)
         if task_info is not None:
             if task_info["status"] == TaskApi.Status.ERROR.value:
-                self.card.update_badge_by_key(key="Training", label="Failed", badge_type="error")
+                self.card.update_badge_by_key(key="Status", label="Failed", badge_type="error")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.CONSUMED.value:
-                self.card.update_badge_by_key(
-                    key="Training", label="Consumed", badge_type="warning"
-                )
+                self.card.update_badge_by_key(key="Status", label="Consumed", badge_type="warning")
             elif task_info["status"] == TaskApi.Status.QUEUED.value:
-                self.card.update_badge_by_key(key="Training", label="Queued", badge_type="warning")
+                self.card.update_badge_by_key(key="Status", label="Queued", badge_type="warning")
             elif task_info["status"] in [
                 TaskApi.Status.STOPPED.value,
                 TaskApi.Status.TERMINATING.value,
             ]:
-                self.card.update_badge_by_key(key="Training", label="Stopped", badge_type="warning")
+                self.card.update_badge_by_key(key="Status", label="Stopped", badge_type="warning")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.FINISHED.value:
-                self.card.update_badge_by_key(key="Training", label="Done", badge_type="success")
+                self.card.update_badge_by_key(key="Status", label="Finished", badge_type="success")
                 for cb in self._train_finished_cb:
                     if not callable(cb):
                         logger.error(f"Train finished callback {cb} is not callable.")
@@ -356,9 +389,7 @@ class BaseTrainNode(SolutionElement):
                         logger.error(f"Error in train finished callback: {e}")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             else:
-                self.card.update_badge_by_key(
-                    key="Training", label="In progress", badge_type="info"
-                )
+                self.card.update_badge_by_key(key="Status", label="Training...", badge_type="info")
         else:
             logger.error(f"Task info is not found for task_id: {task_id}")
 

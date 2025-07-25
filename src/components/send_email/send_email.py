@@ -35,24 +35,32 @@ class SendEmail(Widget):
             port: Optional[int] = None,
         ):
             if (not username or not password) or (username.strip() == "" or password.strip() == ""):
-                raise ValueError("Username and password must be provided.")
+                pass
+                # raise ValueError("Username and password must be provided.")
             self.username = username
             self.password = password
 
             domain = self.get_domain()
-            _host, _port = SMTP_PROVIDERS.get(domain, (None, None))
+            if not domain:
+                _host, _port = None, None
+            else:
+                _host, _port = SMTP_PROVIDERS.get(domain, (None, None))
             self.host = host or _host
             self.port = port or _port
             if not self.host or not self.port:
-                raise ValueError(
-                    f"No SMTP settings found for domain '{domain}'. "
-                    "Please pass smtp_host and smtp_port explicitly."
-                )
+                pass
+                # raise ValueError(
+                #     f"No SMTP settings found for domain '{domain}'. "
+                #     "Please pass smtp_host and smtp_port explicitly."
+                # )
 
         def get_domain(self) -> str:
             """
             Extracts the email domain from the username.
             """
+            if not self.username:
+                return
+                # raise ValueError("Username must be provided to extract the domain.")
             return self.username.split("@")[-1].lower()
 
         @classmethod
@@ -73,9 +81,10 @@ class SendEmail(Widget):
             port = os.getenv("EMAIL_PORT")
 
             if not username or not password:
-                raise ValueError(
-                    "Environment variables EMAIL_USERNAME and EMAIL_PASSWORD must be set."
-                )
+                pass
+                # raise ValueError(
+                #     "Environment variables EMAIL_USERNAME and EMAIL_PASSWORD must be set."
+                # )
 
             return cls(username, password, host, port)
 
@@ -229,6 +238,10 @@ class SendEmail(Widget):
         Send an email via SMTP. If smtp_host/port are not provided,
         they will be inferred from the username's email domain using SMTP_PROVIDERS.
         """
+        if not credentials.username or not credentials.password:
+            logger.warning("Email notifications are enabled, but no credentials are provided.")
+            return
+            # raise ValueError("Username and password must be provided in credentials.")
 
         from email.message import EmailMessage
 

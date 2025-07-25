@@ -61,7 +61,7 @@ class RedeploySettingsGUI(Widget):
     @property
     def checkbox(self):
         if not hasattr(self, "_checkbox"):
-            self._checkbox = Checkbox(content="enable", checked=False)
+            self._checkbox = Checkbox(content="enable", checked=True)
         return self._checkbox
 
     @property

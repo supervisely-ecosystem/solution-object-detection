@@ -79,7 +79,7 @@ class ComparisonAutomation(Automation):
         return is_automated, automation_interval
 
     def _create_widget(self) -> Container:
-        self.automation_switch = Switch(False)
+        self.automation_switch = Switch(True)
         self.automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
         self.automation_periodic_input.disable()
         interval_field = Field(
@@ -429,11 +429,15 @@ class CompareNode(SolutionElement):
             raise ValueError("Primary metric must be provided for comparison.")
 
         if len(self.evaluation_dirs) != 2:
-            raise ValueError("Evaluation directories not set or not enough for comparison.")
-
+            # raise ValueError("Evaluation directories not set or not enough for comparison.")
+            logger.warning(f"Evaluation directories != 2: {self.evaluation_dirs}")
+            if len(self.evaluation_dirs) < 2:
+                logger.warning("Not enough evaluation directories provided for comparison.")
+                return False
+            
         metric_old, _ = self._get_info_from_experiment(primary_metric, self.evaluation_dirs[0])
         metric_new, new_checkpoint_path = self._get_info_from_experiment(
-            primary_metric, self.evaluation_dirs[1]
+            primary_metric, self.evaluation_dirs[-1]
         )
         if metric_old is None or metric_new is None:
             raise ValueError(f"Primary metric '{primary_metric}' not found in evaluation results.")
@@ -445,7 +449,7 @@ class CompareNode(SolutionElement):
             if new_checkpoint_path:
                 logger.info(f"New best checkpoint path: {new_checkpoint_path}")
                 self.result_best_checkpoint = str(new_checkpoint_path)
-                self.evaluation_dirs = [self.evaluation_dirs[1]]
+                self.evaluation_dirs = [self.evaluation_dirs[-1]]
         else:
             logger.info(f"{primary_metric} of new model is worse: {metric_new} <= {metric_old}")
             self.result_best_checkpoint = None

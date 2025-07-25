@@ -558,6 +558,8 @@ class BaseDeployNode(SolutionElement):
             agent_info = self.api.agent.get_info_by_id(agent_id)
             if not hasattr(agent_info, "gpu_info"):
                 return None
+            if not isinstance(agent_info.gpu_info, dict) or "device_memory" not in agent_info.gpu_info:
+                return None
             return {
                 "available": agent_info.gpu_info["device_memory"][0]["available"],
                 "total": agent_info.gpu_info["device_memory"][0]["total"],
@@ -586,7 +588,7 @@ class BaseDeployNode(SolutionElement):
             self.card.remove_property_by_key("Agent")
             self.card.remove_property_by_key("GPU Memory")
 
-        self._update_properties()
+        # self._update_properties()
 
     def _update_properties(self, deploy_info: Optional[Dict] = None) -> None:
         """

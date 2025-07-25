@@ -4,6 +4,7 @@ import supervisely as sly
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import Icons, SolutionCard
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
+from supervisely._utils import is_development, abs_url
 
 
 class EvaluationReportNode(SolutionElement):
@@ -114,7 +115,7 @@ class EvaluationReportNode(SolutionElement):
 
         sly.fs.silent_remove("./model_evaluation_report.lnk")
 
-        return sly.utils.abs_url(base_url)
+        return abs_url(base_url) if is_development() else base_url
 
     def _get_overview_markdown(self) -> str:
         """

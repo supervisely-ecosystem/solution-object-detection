@@ -595,7 +595,6 @@ class BaseDeployNode(SolutionElement):
         Updates the properties of the card with the current model and agent information.
         """
         if self.main_widget.model is not None:
-            self.refresh_memory_usage_info()
             deploy_info = deploy_info or self._get_deployed_model_info()[1]
             self.card.update_property("Source", deploy_info["model_source"])
             self.card.update_property("Hardware", deploy_info["hardware"])

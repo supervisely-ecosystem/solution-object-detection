@@ -3,12 +3,15 @@ import random
 from typing import Optional
 
 import src.nodes as n
+import src.sly_functions as f
 import src.sly_globals as g
 import supervisely as sly
 from src.graph_builder import layout
 from supervisely.solution.scheduler import TasksScheduler
 
-app = sly.Application(layout=layout, static_dir="static")
+btn = sly.app.widgets.Button("debug train finished")
+
+app = sly.Application(layout=sly.app.widgets.Container([btn, layout]), static_dir="static")
 app.call_before_shutdown(TasksScheduler().shutdown)
 
 
@@ -111,3 +114,40 @@ if n.move_labeled.automation.enabled_checkbox.is_checked():
     n.move_labeled.apply_automation(_move_labeled_images)
 
 n.experiments.redeploy_settings.load_settings()
+
+@btn.click
+def _on_start_btn_click():
+    # set best model
+    best_model_path = "/experiments/2730_SOLUTION1 (training)/48663_RT-DETRv2/checkpoints/best.pth"
+    n.experiments.experiments.set_best_model(best_model_path)
+    # add best model evaluation directory to compare node
+    best_eval_dir = "/model-benchmark/2730_SOLUTION1 (training)/48664_Serve RT-DETRv2"
+    n.experiments.compare_node.evaluation_dirs.append(best_eval_dir)
+
+    # get last trained model evaluation report
+    task_id = 48663
+    task_info = g.api.task.get_info_by_id(task_id)
+    experiment_data = task_info["meta"].get("output", {}).get("experiment", {}).get("data", {})
+    report_id = experiment_data.get("evaluation_report_id")
+    report_id = 778295
+    report_info = g.api.storage.get_info_by_id(report_id)
+    report_eval_dir = report_info.path.split("visualizations/")[0]
+    n.rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir)
+    n.rt_detr.eval_report_after_training.node.enable()
+
+    # add evaluation report directory to compare node
+    # n.experiments.compare_node.evaluation_dirs.append(report_eval_dir)
+
+    # start re-evaluation of the best model on new validation set
+    n.experiments.re_eval.set_model_path(n.experiments.experiments.best_model)
+    n.experiments.re_eval.run()  # comparison will be done automatically after re-evaluation
+
+
+# sly.logger.warning(f"No evaluation report found in task {task_id} output. Re-evaluating...")
+# artifacts_dir = task_info["meta"]["output"]["experiment"]["data"]["artifacts_dir"]
+# best_checkpoint = task_info["meta"]["output"]["experiment"]["data"]["best_checkpoint"]
+# model_path = os.path.join(artifacts_dir, "checkpoints", best_checkpoint)
+# n.re_eval.set_model_path(model_path)
+# n.re_eval.run(skip_cb=True)
+# # todo: get res eval dir from re_eval
+# # report_eval_dir

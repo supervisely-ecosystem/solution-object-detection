@@ -1,0 +1,16 @@
+{
+  "type": "app",
+  "version": "2.0.0",
+  "name": "Object Detection Solution",
+  "description": "This solution provides a comprehensive framework for object detection tasks, including data preparation, model training, evaluation, and deployment. It integrates various components for active learning workflow.",
+  "docker_image": "supervisely/base-py-sdk:6.73.398",
+  "instance_version": "6.13.8",
+  "categories": ["images"],
+  "headless": false,
+  "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
+  "port": 8000,
+  "context_menu": {
+    "target": ["images_project"]
+  },
+  "restart_policy": "on_error"
+}

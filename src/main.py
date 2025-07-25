@@ -122,7 +122,7 @@ def _on_start_btn_click():
     n.experiments.experiments.set_best_model(best_model_path)
     # add best model evaluation directory to compare node
     best_eval_dir = "/model-benchmark/2730_SOLUTION1 (training)/48664_Serve RT-DETRv2"
-    n.experiments.compare_node.evaluation_dirs.append(best_eval_dir)
+    n.experiments.compare_node.evaluation_dirs = [best_eval_dir]
 
     # get last trained model evaluation report
     task_id = 48663

@@ -43,7 +43,7 @@ re_eval.set_model_path(
 compare_node = CompareNode(
     g.api,
     g.project,
-    title="Compare Reports",
+    title="Compare Models",
     description="Compare evaluation results from the latest training session againt the best model reference report. Helps track performance improvements over time and identify the most effective training setups. If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process.",
     width=250,
     x=1300,
@@ -106,9 +106,42 @@ def on_compare_finished(res_dir, res_link) -> None:
         )
 
 
+@rt_detr.train_node.on_train_started
+def _on_train_rt_detr_started():
+    rt_detr.eval_report_after_training.node.disable()
+    rt_detr.overview_dummy.node.disable()
+    rt_detr.training_charts_dummy.node.disable()
+    rt_detr.checkpoints_folder.node.disable()
+
+
+@yolo.train_node.on_train_started
+def _on_train_yolo_started():
+    yolo.yolo_eval_report_after_training.node.disable()
+    yolo.overview_dummy.node.disable()
+    yolo.training_charts_dummy.node.disable()
+    yolo.checkpoints_folder.node.disable()
+
+
 @rt_detr.train_node.on_train_finished
-def _on_train_finished(task_id: int):
-    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_id)
+def _on_train_rt_detr_finished(task_id: int):
+    task_info = g.api.task.get_info_by_id(task_id)
+    if task_info is None:
+        sly.logger.error(f"Task with ID {task_info['id']} not found.")
+        return None
+
+    # * Set app session URL for the custom model deployment node
+    session_url = f._get_app_session_from_task_info(task_info)
+    if session_url:
+        rt_detr.deploy_custom_model_node.set_app_session(session_url)
+
+    # * Set checkpoints directory for the RT-DETR training node
+    checkpoints_dir = f._get_checkpoints_dir_from_task_info(task_info)
+    if checkpoints_dir:
+        rt_detr.checkpoints_folder.card.link = checkpoints_dir
+        rt_detr.checkpoints_folder.node.enable()
+
+    # * Get evaluation report directory from the task info
+    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_info)
     if report_eval_dir is None:
         sly.logger.error(f"Evaluation directory for task {task_id} not found.")
         return
@@ -124,14 +157,31 @@ def _on_train_finished(task_id: int):
         # * Start re-evaluation the best model on new validation set
         re_eval.set_model_path(experiments.best_model)
         re_eval.run()
-    elif model_path := f._get_best_model_from_task_info(g.api, task_id):
+    elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)
 
 
 @yolo.train_node.on_train_finished
-def _on_train_finished(task_id: int):
-    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_id)
+def _on_train_yolo_finished(task_id: int):
+    task_info = g.api.task.get_info_by_id(task_id)
+    if task_info is None:
+        sly.logger.error(f"Task with ID {task_info['id']} not found.")
+        return None
+
+    # * Set app session URL for the custom model deployment node
+    sesioon_url = f._get_app_session_from_task_info(task_info)
+    if sesioon_url:
+        yolo.deploy_custom_model_node.set_app_session(sesioon_url)
+
+    # * Set checkpoints directory for the YOLO training node
+    checkpoints_dir = f._get_checkpoints_dir_from_task_info(task_info)
+    if checkpoints_dir:
+        yolo.checkpoints_folder.card.link = checkpoints_dir
+        yolo.checkpoints_folder.node.enable()
+
+    # * Get evaluation report directory from the task info
+    report_eval_dir = f._get_eval_dir_from_task_info(g.api, task_info)
     if report_eval_dir is None:
         sly.logger.error(f"Evaluation directory for task {task_id} not found.")
         return
@@ -147,6 +197,6 @@ def _on_train_finished(task_id: int):
         # * Start re-evaluation the best model on new validation set
         re_eval.set_model_path(experiments.best_model)
         re_eval.run()
-    elif model_path := f._get_best_model_from_task_info(g.api, task_id):
+    elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)

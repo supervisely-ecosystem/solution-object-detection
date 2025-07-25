@@ -361,22 +361,20 @@ class BaseTrainNode(SolutionElement):
         task_info = self.api.task.get_info_by_id(task_id)
         if task_info is not None:
             if task_info["status"] == TaskApi.Status.ERROR.value:
-                self.card.update_badge_by_key(key="Training", label="Failed", badge_type="error")
+                self.card.update_badge_by_key(key="Status", label="Failed", badge_type="error")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.CONSUMED.value:
-                self.card.update_badge_by_key(
-                    key="Training", label="Consumed", badge_type="warning"
-                )
+                self.card.update_badge_by_key(key="Status", label="Consumed", badge_type="warning")
             elif task_info["status"] == TaskApi.Status.QUEUED.value:
-                self.card.update_badge_by_key(key="Training", label="Queued", badge_type="warning")
+                self.card.update_badge_by_key(key="Status", label="Queued", badge_type="warning")
             elif task_info["status"] in [
                 TaskApi.Status.STOPPED.value,
                 TaskApi.Status.TERMINATING.value,
             ]:
-                self.card.update_badge_by_key(key="Training", label="Stopped", badge_type="warning")
+                self.card.update_badge_by_key(key="Status", label="Stopped", badge_type="warning")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             elif task_info["status"] == TaskApi.Status.FINISHED.value:
-                self.card.update_badge_by_key(key="Training", label="Done", badge_type="success")
+                self.card.update_badge_by_key(key="Status", label="Finished", badge_type="success")
                 for cb in self._train_finished_cb:
                     if not callable(cb):
                         logger.error(f"Train finished callback {cb} is not callable.")
@@ -390,9 +388,7 @@ class BaseTrainNode(SolutionElement):
                         logger.error(f"Error in train finished callback: {e}")
                 self.automation.remove(self.automation.CHECK_STATUS_JOB_ID)
             else:
-                self.card.update_badge_by_key(
-                    key="Training", label="In progress", badge_type="info"
-                )
+                self.card.update_badge_by_key(key="Status", label="Training...", badge_type="info")
         else:
             logger.error(f"Task info is not found for task_id: {task_id}")
 

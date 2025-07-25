@@ -340,9 +340,7 @@ class EvaluationNode(SolutionElement):
         self.task_history.add_task(session_info)
         if error:
             logger.error(f"Error during evaluation: {error}")
-            self.node.show_failed_badge()
         elif res_dir:
-            self.node.show_finished_badge()
             if not skip_cb:
                 for cb in self._finish_callbacks:
                     if not callable(cb):
@@ -413,8 +411,7 @@ class EvaluationNode(SolutionElement):
             self.card.update_property(**prop)
 
     def show_in_progress_badge(self) -> None:
-        badge = self.card.Badge("🏃‍♂️", "Evaluation...", "info", True)
-        self.card.add_badge(badge)
+        self.card.update_badge_by_key(key="Status", label="Evaluation...", badge_type="warning")
 
     def hide_in_progress_badge(self) -> None:
-        self.card.remove_badge_by_key("Evaluation...")
+        self.card.remove_badge_by_key("Status")

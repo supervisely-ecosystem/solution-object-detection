@@ -186,8 +186,8 @@ def _on_train_yolo_finished(task_id: int):
         sly.logger.error(f"Evaluation directory for task {task_id} not found.")
         return
 
-    # * Add evaluation report directory to the compare node
-    compare_node.evaluation_dirs.append(report_eval_dir)
+    # * Clear previous evaluation directories
+    compare_node.evaluation_dirs = []
 
     # * Update evaluation report after training
     yolo.eval_report_after_training.set_benchmark_dir(report_eval_dir)
@@ -197,6 +197,11 @@ def _on_train_yolo_finished(task_id: int):
         # * Start re-evaluation the best model on new validation set
         re_eval.set_model_path(experiments.best_model)
         re_eval.run()
+
+        # * Add evaluation report directory to the compare node
+        compare_node.evaluation_dirs.append(report_eval_dir)
     elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)
+        agent_id = redeploy_settings.get_agent_id()
+        deploy_custom_model_node.deploy(model=experiments.best_model, agent_id=agent_id)

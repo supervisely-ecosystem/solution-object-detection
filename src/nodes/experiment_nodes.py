@@ -132,7 +132,7 @@ def _on_train_rt_detr_finished(task_id: int):
     # * Set app session URL for the custom model deployment node
     session_url = f._get_app_session_from_task_info(task_info)
     if session_url:
-        rt_detr.deploy_custom_model_node.set_app_session(session_url)
+        rt_detr.training_charts_dummy.card.link = session_url
 
     # * Set checkpoints directory for the RT-DETR training node
     checkpoints_dir = f._get_checkpoints_dir_from_task_info(task_info)
@@ -172,7 +172,7 @@ def _on_train_yolo_finished(task_id: int):
     # * Set app session URL for the custom model deployment node
     sesioon_url = f._get_app_session_from_task_info(task_info)
     if sesioon_url:
-        yolo.deploy_custom_model_node.set_app_session(sesioon_url)
+        yolo.overview_dummy.card.link = sesioon_url
 
     # * Set checkpoints directory for the YOLO training node
     checkpoints_dir = f._get_checkpoints_dir_from_task_info(task_info)
@@ -190,8 +190,8 @@ def _on_train_yolo_finished(task_id: int):
     compare_node.evaluation_dirs.append(report_eval_dir)
 
     # * Update evaluation report after training
-    yolo.yolo_eval_report_after_training.set_benchmark_dir(report_eval_dir)
-    yolo.yolo_eval_report_after_training.node.enable()
+    yolo.eval_report_after_training.set_benchmark_dir(report_eval_dir)
+    yolo.eval_report_after_training.node.enable()
 
     if experiments.best_model:
         # * Start re-evaluation the best model on new validation set

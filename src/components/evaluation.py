@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from supervisely import logger, timeit
 from supervisely.api.api import Api
@@ -79,7 +79,7 @@ class EvaluationNode(SolutionElement):
         self,
         api: Api,
         project: Union[int, ProjectInfo],
-        dataset_ids: Optional[list[int]] = None,
+        dataset_ids: Optional[List[int]] = None,
         collection: Union[int, str] = None,
         x: int = 0,
         y: int = 0,

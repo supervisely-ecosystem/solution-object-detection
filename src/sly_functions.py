@@ -71,3 +71,27 @@ def _get_app_session_from_task_info(task_info: Dict) -> Optional[str]:
         return None
     url = f"/net/{session_token}"
     return abs_url(url) if is_development() else url
+
+
+def _download_js_bundle_files():
+    """
+    Temporarily fix: Downloads JS and CSS files for the app.
+    """
+    js_link = "https://github.com/supervisely-ecosystem/solution-object-detection/releases/download/v0.0.1/sly-app-widgets-2.2.2.bundle.js"
+    css_link = "https://github.com/supervisely-ecosystem/solution-object-detection/releases/download/v0.0.1/sly-app-widgets-2.2.2.bundle.css"
+
+    sly.logger.info("Downloading JS and CSS files for the app...")
+
+    static_dir = "static"
+    sly.fs.mkdir(static_dir, remove_content_if_exists=True)
+
+    js_path = os.path.join(static_dir, "sly-app-widgets-2.2.2.bundle.js")
+    css_path = os.path.join(static_dir, "sly-app-widgets-2.2.2.bundle.css")
+
+    sly.fs.download(js_link, js_path)
+    sly.fs.download(css_link, css_path)
+    sly.logger.info("JS and CSS files downloaded successfully.")
+
+    # check if files exist
+    if not os.path.exists(js_path) or not os.path.exists(css_path):
+        raise FileNotFoundError("Failed to download JS and CSS files for the app.")

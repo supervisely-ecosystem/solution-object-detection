@@ -1,9 +1,8 @@
-import os
-import random
-from typing import Optional
+import src.sly_functions as f
+
+f._download_js_bundle_files()
 
 import src.nodes as n
-import src.sly_functions as f
 import src.sly_globals as g
 import supervisely as sly
 from src.graph_builder import layout
@@ -114,6 +113,7 @@ if n.move_labeled.automation.enabled_checkbox.is_checked():
     n.move_labeled.apply_automation(_move_labeled_images)
 
 n.experiments.redeploy_settings.load_settings()
+
 
 @btn.click
 def _on_start_btn_click():

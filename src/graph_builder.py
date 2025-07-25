@@ -32,6 +32,7 @@ graph_builder.add_node(n.send_email)
 graph_builder.add_node(n.comparison_report)
 graph_builder.add_node(n.redeploy_settings)
 graph_builder.add_node(n.deploy_custom_model_node)
+graph_builder.add_node(n.api_inference_node)
 
 # * Add edges between nodes
 graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
@@ -101,6 +102,7 @@ graph_builder.add_edge(
     end_socket="right",
     path="grid",
 )
+graph_builder.add_edge(n.redeploy_settings, n.api_inference_node, end_socket="left", path="grid")
 
 # * Build the layout
 layout = graph_builder.build()

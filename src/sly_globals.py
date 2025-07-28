@@ -44,14 +44,20 @@ else:
     training_project = api.project.get_info_by_id(custom_data["training_project"])
 
 if "train_collection" not in custom_data:
-    train_collection = api.entities_collection.create(training_project.id, "All_train")
+    project_collections = api.entities_collection.get_list(training_project.id)
+    train_collection = next((c for c in project_collections if c.name == "All_train"), None)
+    if train_collection is None:
+        train_collection = api.entities_collection.create(training_project.id, "All_train")
     custom_data["train_collection"] = train_collection.id
     update_project = True
 else:
     train_collection = api.entities_collection.get_info_by_id(custom_data["train_collection"])
 
 if "val_collection" not in custom_data:
-    val_collection = api.entities_collection.create(training_project.id, "All_val")
+    project_collections = api.entities_collection.get_list(training_project.id)
+    val_collection = next((c for c in project_collections if c.name == "All_val"), None)
+    if val_collection is None:
+        val_collection = api.entities_collection.create(training_project.id, "All_val")
     custom_data["val_collection"] = val_collection.id
     update_project = True
 else:

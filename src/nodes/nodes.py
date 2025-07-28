@@ -1,5 +1,6 @@
-import src.sly_globals as g
 import supervisely as sly
+
+import src.sly_globals as g
 from src.components.automation_tasks import AutomationTasksNode
 from src.components.definitions import DefinitionsNode
 from src.components.task_logs import TaskLogsNode
@@ -49,7 +50,11 @@ labeling_performance = sly.solution.LinkNode(
 splits = sly.solution.TrainValSplit(x=635, y=1300, project_id=g.project.id)
 
 move_labeled = sly.solution.MoveLabeled(
-    x=635, y=1390, api=g.api, src_project_id=g.labeling_project.id, dst_project_id=g.training_project.id
+    x=635,
+    y=1390,
+    api=g.api,
+    src_project_id=g.labeling_project.id,
+    dst_project_id=g.training_project.id,
 )
 
 training_project = sly.solution.ProjectNode(
@@ -69,4 +74,20 @@ versioning = sly.solution.LinkNode(
     description="Versioning allows you to track changes in your datasets over time. Each version is a snapshot of the dataset at a specific point in time, enabling you to revert to previous versions if needed.",
     width=250,
     link=g.training_project.url.replace("datasets", "versions"),
+)
+
+ai_search = sly.solution.LinkNode(
+    x=886,
+    y=205,
+    title="AI Search",
+    description="AI Search Service allows you to search for similar images in the dataset using AI models.",
+    width=180,
+)
+
+ai_search_clip = sly.solution.LinkNode(
+    x=1100,
+    y=205,
+    title="CLIP Service",
+    description="CLIP Service creates vectors for images and converts prompts to vectors for AI search.",
+    link=sly.utils.abs_url("/ecosystem/apps/deploy-clip-as-service"),
 )

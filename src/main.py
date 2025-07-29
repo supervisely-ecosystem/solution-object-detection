@@ -32,7 +32,7 @@ def _on_cloud_import_finish(task_id: int):
     last_update = last_task.get("items_count")
     if last_update is not None:
         n.input_project.update(new_items_count=last_update)
-        n.sampling.update_sampling_widgets()
+        n.sampling.update_sampling_widgets(updated_project_info=upd_project)
 
 
 @n.cloud_import.automation_btn.click

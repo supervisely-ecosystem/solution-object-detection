@@ -18,9 +18,6 @@ experiments = AllExperimentsNode(x=1300, y=1850, project_id=g.project.id, task_t
 
 evaluation_report = EvaluationReportNode(
     api=g.api,
-    project_info=g.project,
-    benchmark_dir=None,
-    title="Evaluation Report",
     description="Quick access to the latest evaluation report of the best model from the Experiments. The report contains the model performance metrics and visualizations. Will be used as a reference for comparing with models from the next experiments.",
     width=200,
     x=1500,
@@ -57,7 +54,8 @@ compare_node = CompareNode(
 
 send_email = SendEmailNode(width=200, x=1500, y=2400)
 
-comparison_report = sly.solution.LinkNode(
+comparison_report = EvaluationReportNode(
+    api=g.api,
     title="Comparison Report",
     description="Quick access to the most recent comparison report"
     "between the latest training session and the best model reference. "
@@ -65,9 +63,6 @@ comparison_report = sly.solution.LinkNode(
     width=200,
     x=1500,
     y=2470,
-    icon=sly.app.widgets.Icons(
-        class_name="zmdi zmdi-open-in-new", color="#FF00A6", bg_color="#FFBCED"
-    ),
 )
 comparison_report.node.disable()
 
@@ -82,17 +77,26 @@ api_inference_node = ApiInferenceNode(
 )
 
 
+@re_eval.on_start
+def on_re_eval_started():
+    evaluation_report.hide_new_report_badge()
+    evaluation_report.node.disable()
+
+
 @re_eval.on_finish
 def on_re_eval_finished(res_dir) -> None:
     evaluation_report.set_benchmark_dir(res_dir)
     evaluation_report.node.enable()
     compare_node.evaluation_dirs.append(res_dir)
+    comparison_report.hide_new_report_badge()
+    comparison_report.node.disable()
     compare_node.run()
 
 
 @compare_node.on_finish
 def on_compare_finished(res_dir, res_link) -> None:
     comparison_report.card.link = res_link
+    comparison_report.show_new_report_badge()
     comparison_report.node.enable()
     if send_email.is_email_sending_enabled:
         url = sly.utils.abs_url(res_link)
@@ -108,6 +112,9 @@ def on_compare_finished(res_dir, res_link) -> None:
 
 @rt_detr.train_node.on_train_started
 def _on_train_rt_detr_started():
+    evaluation_report.hide_new_report_badge()
+    evaluation_report.node.disable()
+    rt_detr.eval_report_after_training.hide_new_report_badge()
     rt_detr.eval_report_after_training.node.disable()
     rt_detr.overview_dummy.node.disable()
     rt_detr.training_charts_dummy.node.disable()
@@ -116,6 +123,9 @@ def _on_train_rt_detr_started():
 
 @yolo.train_node.on_train_started
 def _on_train_yolo_started():
+    evaluation_report.hide_new_report_badge()
+    evaluation_report.node.disable()
+    yolo.eval_report_after_training.hide_new_report_badge()
     yolo.yolo_eval_report_after_training.node.disable()
     yolo.overview_dummy.node.disable()
     yolo.training_charts_dummy.node.disable()
@@ -162,6 +172,8 @@ def _on_train_rt_detr_finished(task_id: int):
     elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)
+        evaluation_report.set_benchmark_dir(report_eval_dir)
+        evaluation_report.node.enable()
         agent_id = redeploy_settings.get_agent_id()
         deploy_custom_model_node.deploy(model=experiments.best_model, agent_id=agent_id)
 

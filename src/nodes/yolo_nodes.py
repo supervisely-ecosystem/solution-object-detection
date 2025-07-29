@@ -51,15 +51,9 @@ checkpoints_folder = sly.solution.LinkNode(
 checkpoints_folder.node.disable()
 eval_report_after_training = EvaluationReportNode(
     g.api,
-    g.project,
-    benchmark_dir=None,
-    title="Evaluation Report",
     description="Quick access to the evaluation report of the model after training. The report contains the model performance metrics and visualizations.",
     width=200,
     x=400,
     y=2210,
-    icon=sly.app.widgets.Icons(
-        class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED"
-    ),
 )
 eval_report_after_training.node.disable()

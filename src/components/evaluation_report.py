@@ -68,6 +68,7 @@ class EvaluationReportNode(LinkNode):
             self.url = ""
             self.markdown_overview = None
             self.card.link = ""
+            self.hide_new_report_badge()
             return
 
         self.benchmark_dir = benchmark_dir
@@ -75,6 +76,7 @@ class EvaluationReportNode(LinkNode):
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
         self.card.link = self.url
+        self.show_new_report_badge()
 
     def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
         if not remote_lnk_path:
@@ -153,7 +155,7 @@ class EvaluationReportNode(LinkNode):
 
     def show_new_report_badge(self):
         """Shows a badge indicating that a new evaluation report is available."""
-        self.card.update_badge_by_key(key="📋", label="new report", badge_type="success")
+        self.card.update_badge_by_key(key="📋", label="New report", badge_type="success")
 
     def hide_new_report_badge(self):
         """Hides the new report badge."""

@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from supervisely import logger, timeit
 from supervisely.api.api import Api
 from supervisely.api.project_api import ProjectInfo
+
+# from supervisely.api.task_api import KubernetesSettings
 from supervisely.app.widgets import (
     AgentSelector,
     Button,
@@ -114,6 +116,7 @@ class EvaluationNode(SolutionElement):
         except Exception as e:
             logger.warning(f"Failed to get collection info: {e}")
 
+        self._start_callbacks = []
         self._finish_callbacks = []
 
         self.task_history = EvaluationTaskHistory()
@@ -214,9 +217,9 @@ class EvaluationNode(SolutionElement):
 
             @self._run_btn.click
             def run_cb():
-                self.show_in_progress_badge("Evaluation")
+                self.node.show_in_progress_badge("Evaluation")
                 self.run()
-                self.hide_in_progress_badge("Evaluation")
+                self.node.hide_in_progress_badge("Evaluation")
 
         return self._run_btn
 
@@ -229,11 +232,20 @@ class EvaluationNode(SolutionElement):
     @timeit
     def _deploy_model(self):
         try:
+            agent_id = self._get_agent()
+            if not agent_id:
+                raise ValueError("Agent ID is not set. Please select an agent.")
+            # agent_info = self.api.agent.get_info_by_id(agent_id)
+            # kubernetes_settings = None
+            # if agent_info.type == "kubernetes":
+            #     kubernetes_settings = KubernetesSettings(limit_gpu_memory_mb=10000) # Example setting
+
             self._model = self.api.nn.deploy(
                 model=self._model_path,
                 workspace_id=self.project.workspace_id,
-                agent_id=self._get_agent(),
+                agent_id=agent_id,
                 task_name="Solution: " + str(self.api.task_id),
+                # kubernetes_settings=kubernetes_settings,
             )
         except TimeoutError as e:
             import re
@@ -359,7 +371,17 @@ class EvaluationNode(SolutionElement):
                     except Exception as e:
                         logger.error(f"Error in finish callback: {e}", exc_info=True)
 
+    def on_start(self, fn):
+        """
+        Decorator to register a callback function that will be called when the evaluation starts.
+        """
+        self._start_callbacks.append(fn)
+        return fn
+
     def on_finish(self, fn):
+        """
+        Decorator to register a callback function that will be called when the evaluation finishes.
+        """
         self._finish_callbacks.append(fn)
         return fn
 

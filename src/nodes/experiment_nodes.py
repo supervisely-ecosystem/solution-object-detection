@@ -18,9 +18,6 @@ experiments = AllExperimentsNode(x=1300, y=1850, project_id=g.project.id, task_t
 
 evaluation_report = EvaluationReportNode(
     api=g.api,
-    project_info=g.project,
-    benchmark_dir=None,
-    title="Evaluation Report",
     description="Quick access to the latest evaluation report of the best model from the Experiments. The report contains the model performance metrics and visualizations. Will be used as a reference for comparing with models from the next experiments.",
     width=200,
     x=1500,
@@ -57,7 +54,8 @@ compare_node = CompareNode(
 
 send_email = SendEmailNode(width=200, x=1500, y=2400)
 
-comparison_report = sly.solution.LinkNode(
+comparison_report = EvaluationReportNode(
+    api=g.api,
     title="Comparison Report",
     description="Quick access to the most recent comparison report"
     "between the latest training session and the best model reference. "
@@ -65,9 +63,6 @@ comparison_report = sly.solution.LinkNode(
     width=200,
     x=1500,
     y=2470,
-    icon=sly.app.widgets.Icons(
-        class_name="zmdi zmdi-open-in-new", color="#FF00A6", bg_color="#FFBCED"
-    ),
 )
 comparison_report.node.disable()
 

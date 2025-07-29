@@ -79,7 +79,7 @@ class ComparisonAutomation(Automation):
         return is_automated, automation_interval
 
     def _create_widget(self) -> Container:
-        self.automation_switch = Switch(True)
+        self.automation_switch = Switch(switched=True)
         self.automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
         self.automation_periodic_input.disable()
         interval_field = Field(
@@ -207,7 +207,7 @@ class CompareNode(SolutionElement):
 
         @self.automation.apply_btn.click
         def enable_automation():
-            self.automation_modal.hide()
+            self.automation.modal.hide()
             enabled, sec = self.automation.get_automation_details()
             if not enabled:
                 logger.info("Periodic comparison automation disabled.")
@@ -258,13 +258,19 @@ class CompareNode(SolutionElement):
         """
         Creates and returns the SolutionCard for the Compare widget.
         """
-        return SolutionCard(
+        card = SolutionCard(
             title=self.title,
             tooltip=self._create_tooltip(),
             width=self.width,
             icon=self.icon,
             tooltip_position=self.tooltip_position,
         )
+
+        @card.click
+        def _on_card_click():
+            self.automation.modal.show()
+
+        return card
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         return SolutionCard.Tooltip(description=self.description, content=self._get_buttons())
@@ -285,19 +291,6 @@ class CompareNode(SolutionElement):
                 self.run()
                 self._run_btn.enable()
 
-        if not hasattr(self, "_automate_btn"):
-            self._automate_btn = Button(
-                "Automate",
-                icon="zmdi zmdi-settings",
-                button_size="mini",
-                plain=True,
-                button_type="text",
-            )
-
-            @self._automate_btn.click
-            def show_automation_modal():
-                self.automation_modal.show()
-
         if not hasattr(self, "_tasks_history_btn"):
             self._tasks_history_btn = Button(
                 "Tasks History",
@@ -313,7 +306,6 @@ class CompareNode(SolutionElement):
 
         return [
             self._run_btn,
-            self._automate_btn,
             self._tasks_history_btn,
         ]
 
@@ -351,6 +343,7 @@ class CompareNode(SolutionElement):
         Sends a request to the backend to start the evaluation process.
         """
         try:
+            self.node.show_in_progress_badge("Comparing")
             if len(self.evaluation_dirs) == 1:
                 logger.warning(
                     "Only one evaluation directory provided. Cannot compare. Using the single directory for results."
@@ -389,6 +382,8 @@ class CompareNode(SolutionElement):
             logger.info(f"Evaluation completed successfully. Task ID: {task_id}")
         except Exception as e:
             logger.error(f"Evaluation failed. {e}", exc_info=True)
+        finally:
+            self.node.hide_in_progress_badge("Comparing")
 
     def get_available_agent_id(self) -> int:
         agents = self.api.agent.get_list_available(self.team_id, True)
@@ -434,7 +429,7 @@ class CompareNode(SolutionElement):
             if len(self.evaluation_dirs) < 2:
                 logger.warning("Not enough evaluation directories provided for comparison.")
                 return False
-            
+
         metric_old, _ = self._get_info_from_experiment(primary_metric, self.evaluation_dirs[0])
         metric_new, new_checkpoint_path = self._get_info_from_experiment(
             primary_metric, self.evaluation_dirs[-1]

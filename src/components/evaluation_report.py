@@ -1,59 +1,46 @@
 from typing import Literal, Optional
 
 import supervisely as sly
+from supervisely._utils import abs_url, is_development
 from supervisely.app.content import DataJson
-from supervisely.app.widgets import Icons, SolutionCard
-from supervisely.solution.base_node import SolutionCardNode, SolutionElement
-from supervisely._utils import is_development, abs_url
+from supervisely.app.widgets import Icons
+from supervisely.io.env import team_id as env_team_id
+from supervisely.solution.components.link_node import LinkNode
 
 
-class EvaluationReportNode(SolutionElement):
+class EvaluationReportNode(LinkNode):
     def __init__(
         self,
         api: sly.Api,
-        project_info: sly.ProjectInfo,
-        benchmark_dir: str,
-        title: str,
-        description: str,
+        team_id: Optional[int] = None,
+        benchmark_dir: Optional[str] = None,
+        title: Optional[str] = "Evaluation Report",
+        description: Optional[str] = None,
         width: int = 250,
         x: int = 0,
         y: int = 0,
-        icon: Optional[Icons] = None,
         tooltip_position: Literal["left", "right"] = "right",
         *args,
         **kwargs,
     ):
         """A node that displays a model evaluation report."""
         self.api = api
-        self.project = project_info
-        self.team_id = project_info.team_id
-        self.title = title
-        self.description = description
-        self.width = width
-        self.icon = icon or Icons(
-            class_name="zmdi zmdi-collection-text",
-            color="#FF00A6",
-            bg_color="#FFBCED",
+        self.team_id = team_id or env_team_id()
+        icon = Icons(class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED")
+        super().__init__(
+            title=title,
+            description=description,
+            width=width,
+            x=x,
+            y=y,
+            icon=icon,
+            tooltip_position=tooltip_position,
+            *args,
+            **kwargs,
         )
-        self.tooltip_position = tooltip_position
-        super().__init__(*args, **kwargs)
 
-        self.set_benchmark_dir(self.benchmark_dir or benchmark_dir)
-        self.card = self._create_card()
-        self.node = SolutionCardNode(content=self.card, x=x, y=y)
-
-    def _create_card(self) -> SolutionCard:
-        """
-        Creates and returns the SolutionCard.
-        """
-        return SolutionCard(
-            title=self.title,
-            tooltip=self._create_tooltip(),
-            width=self.width,
-            tooltip_position=self.tooltip_position,
-            link=self.url,
-            icon=self.icon,
-        )
+        if benchmark_dir is not None:
+            self.set_benchmark_dir(benchmark_dir or self.benchmark_dir)
 
     @property
     def benchmark_dir(self) -> str:
@@ -80,42 +67,26 @@ class EvaluationReportNode(SolutionElement):
             self.benchmark_dir = None
             self.url = ""
             self.markdown_overview = None
-            if hasattr(self, "card"):
-                self.card.link = ""
+            self.card.link = ""
             return
 
         self.benchmark_dir = benchmark_dir
         lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
-        if hasattr(self, "card"):
-            self.card.link = self.url
-
-    def _create_tooltip(self) -> SolutionCard.Tooltip:
-        """
-        Creates and returns the tooltip for the Manual Import widget.
-        """
-        return SolutionCard.Tooltip(
-            description=self.description, properties=self._property_from_md()
-        )
+        self.card.link = self.url
 
     def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
         if not remote_lnk_path:
             sly.logger.warning("Remote link path is empty.")
             return ""
-        if not self.api.file.exists(self.team_id, remote_lnk_path):
-            sly.logger.warning(
-                f"Link file {remote_lnk_path} does not exist in the benchmark directory."
-            )
+
+        file_info = self.api.storage.get_info_by_path(self.team_id, remote_lnk_path)
+        if not file_info:
+            sly.logger.warning(f"File info not found for path: {remote_lnk_path}")
             return ""
-
-        self.api.file.download(self.team_id, remote_lnk_path, "./model_evaluation_report.lnk")
-        with open("./model_evaluation_report.lnk", "r") as file:
-            base_url = file.read().strip()
-
-        sly.fs.silent_remove("./model_evaluation_report.lnk")
-
-        return abs_url(base_url) if is_development() else base_url
+        report_path = f"/model-benchmark?id={file_info.id}"
+        return abs_url(report_path) if is_development() else report_path
 
     def _get_overview_markdown(self) -> str:
         """
@@ -179,3 +150,11 @@ class EvaluationReportNode(SolutionElement):
                 properties.append({"key": key, "value": value, "link": False, "highlight": False})
 
         return properties
+
+    def show_new_report_badge(self):
+        """Shows a badge indicating that a new evaluation report is available."""
+        self.card.update_badge_by_key(key="📋", label="new report", badge_type="success")
+
+    def hide_new_report_badge(self):
+        """Hides the new report badge."""
+        self.card.remove_badge_by_key("📋")

@@ -118,6 +118,7 @@ n.experiments.redeploy_settings.load_settings()
 @btn.click
 def _on_start_btn_click():
     # set best model
+    sly.logger.info("DEBUG: using dummy models for comparison")
     model_path_1 = "/experiments/2786_SOLUTION2 (training)/48699_RT-DETRv2/checkpoints/best.pth"
     task_id_1 = int(model_path_1.split("/")[-3].split("_")[0])
 

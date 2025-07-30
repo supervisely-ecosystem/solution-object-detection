@@ -9,7 +9,7 @@ train_node = YOLOTrainNode(
     title="Train YOLO",
     description="Train the model on the labeled data from the Training Project. ",
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-memory"),
-    x=235,
+    x=435,
     y=1850,
 )
 train_node.set_collection_ids(
@@ -20,7 +20,7 @@ overview_dummy = sly.solution.LinkNode(
     description="Quick access to the overview of the model and how to use it for inference. ",
     link="",
     width=250,
-    x=400,
+    x=600,
     y=2000,
     icon=sly.app.widgets.Icons(
         class_name="zmdi zmdi-open-in-new", color="#1976D2", bg_color="#E3F2FD"
@@ -32,7 +32,7 @@ training_charts_dummy = sly.solution.LinkNode(
     description="Quick access to the training charts of the training session. ",
     link="",
     width=250,
-    x=400,
+    x=600,
     y=2070,
     icon=sly.app.widgets.Icons(
         class_name="zmdi zmdi-open-in-new", color="#1976D2", bg_color="#E3F2FD"
@@ -44,7 +44,7 @@ checkpoints_folder = sly.solution.LinkNode(
     description="View the folder containing the model checkpoints.",
     link="",
     width=200,
-    x=400,
+    x=600,
     y=2140,
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-folder", color="#1976D2", bg_color="#E3F2FD"),
 )
@@ -53,7 +53,7 @@ eval_report_after_training = EvaluationReportNode(
     g.api,
     description="Quick access to the evaluation report of the model after training. The report contains the model performance metrics and visualizations.",
     width=200,
-    x=400,
+    x=600,
     y=2210,
 )
 eval_report_after_training.node.disable()

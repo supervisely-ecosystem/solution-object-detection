@@ -13,14 +13,14 @@ from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
 
-experiments = AllExperimentsNode(x=1300, y=1850, project_id=g.project.id, task_type="detection")
+experiments = AllExperimentsNode(x=1500, y=1850, project_id=g.project.id, task_type="detection")
 # experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
 
 evaluation_report = EvaluationReportNode(
     api=g.api,
     description="Quick access to the latest evaluation report of the best model from the Experiments. The report contains the model performance metrics and visualizations. Will be used as a reference for comparing with models from the next experiments.",
     width=200,
-    x=1500,
+    x=1700,
     y=2140,
 )
 evaluation_report.node.disable()
@@ -29,7 +29,7 @@ re_eval = EvaluationNode(
     api=g.api,
     project=g.training_project,
     collection=g.val_collection,
-    x=1265,
+    x=1465,
     y=2025,
     tooltip_position="left",
 )
@@ -41,7 +41,7 @@ compare_node = CompareNode(
     g.api,
     title="Compare Models",
     description="Compare evaluation results from the latest training session againt the best model reference report. Helps track performance improvements over time and identify the most effective training setups. If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process.",
-    x=1300,
+    x=1500,
     y=2300,
     tooltip_position="left",
 )
@@ -50,7 +50,7 @@ compare_node = CompareNode(
 #     "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
 # ]
 
-send_email = SendEmailNode(width=200, x=1500, y=2400)
+send_email = SendEmailNode(width=200, x=1700, y=2400)
 
 comparison_report = EvaluationReportNode(
     api=g.api,
@@ -59,16 +59,16 @@ comparison_report = EvaluationReportNode(
     "between the latest training session and the best model reference. "
     "Will be used to assess improvements and decide whether to update the deployed model.",
     width=200,
-    x=1500,
+    x=1700,
     y=2470,
 )
 comparison_report.node.disable()
 
-redeploy_settings = RedeploySettingsNode(x=1800, y=2300)
-deploy_custom_model_node = DeployCustomModel(x=1000, y=470, api=g.api)
+redeploy_settings = RedeploySettingsNode(x=2000, y=2300)
+deploy_custom_model_node = DeployCustomModel(x=1200, y=470, api=g.api)
 api_inference_node = ApiInferenceNode(
     "src/assets/api_inference.md",
-    x=2000,
+    x=2200,
     y=2400,
     markdown_title="Inference API Quickstart",
 )

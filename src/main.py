@@ -133,6 +133,7 @@ def _on_start_btn_click():
     n.experiments.evaluation_report.set_benchmark_dir(report_eval_dir_1)
     n.experiments.evaluation_report.node.enable()
     n.rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir_1)
+    n.rt_detr.eval_report_after_training.node.enable()
 
     # * Add evaluation report directory to the compare node
     n.experiments.compare_node.evaluation_dirs = [report_eval_dir_1]

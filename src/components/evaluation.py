@@ -4,9 +4,11 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from supervisely import logger, timeit
 from supervisely.api.api import Api
-from supervisely.api.project_api import ProjectInfo
 
 # from supervisely.api.task_api import KubernetesSettings
+from supervisely.api.entities_collection_api import EntitiesCollectionInfo
+from supervisely.api.project_api import ProjectInfo
+from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
     AgentSelector,
     Button,
@@ -17,6 +19,7 @@ from supervisely.app.widgets import (
     Icons,
     Switch,
     TasksHistory,
+    Widget,
 )
 from supervisely.solution.base_node import (
     SolutionCard,
@@ -73,6 +76,82 @@ class EvaluationTaskHistory(TasksHistory):
         return self._tasks_table
 
 
+class EvaluationReportGUI(Widget):
+
+    def __init__(self, team_id: int, widget_id: Optional[str] = None):
+        self.team_id = team_id
+        super().__init__(widget_id=widget_id)
+        self.content = self._init_gui()
+
+    def _init_gui(self):
+        agent_selector_field = Field(
+            self.agent_selector,
+            title="Select Agent for Evaluation",
+            description="Select the agent to deploy the model on.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-storage",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+        automation_field = Field(
+            self.automation_switch,
+            title="Enable Automation",
+            description="Enable or disable automatic model re-evaluation after training.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-settings",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+
+        return Container([agent_selector_field, automation_field], gap=20)
+
+    @property
+    def automation_switch(self) -> Switch:
+        if not hasattr(self, "_automation_switch"):
+            self._automation_switch = Switch(switched=True)
+        return self._automation_switch
+
+    @property
+    def agent_selector(self) -> AgentSelector:
+        if not hasattr(self, "_agent_selector"):
+            self._agent_selector = AgentSelector(self.team_id)
+        return self._agent_selector
+
+    def get_json_data(self) -> dict:
+        return {
+            "enabled": self.automation_switch.is_switched(),
+            "agent_id": self.agent_selector.get_value(),
+        }
+
+    def get_json_state(self) -> dict:
+        return {}
+
+    def save_settings(self, enabled: bool, agent_id: Optional[int] = None):
+        DataJson()[self.widget_id]["settings"] = {
+            "enabled": enabled,
+            "agent_id": agent_id if agent_id is not None else self.agent_selector.get_value(),
+        }
+        DataJson().send_changes()
+
+    def load_settings(self):
+        data = DataJson().get(self.widget_id, {}).get("settings", {})
+        enabled = data.get("enabled")
+        agent_id = data.get("agent_id")
+        self.update_widgets(enabled, agent_id)
+
+    def update_widgets(self, enabled: bool, agent_id: Optional[int] = None):
+        if enabled is True:
+            self.automation_switch.on()
+        elif enabled is False:
+            self.automation_switch.off()
+        else:
+            pass  # do nothing, keep current state
+        if agent_id is not None:
+            self.agent_selector.set_value(agent_id)
+
+
 class EvaluationNode(SolutionElement):
     APP_SLUG = "supervisely-ecosystem/model-benchmark"
     EVALUATION_ENDPOINT = "run_evaluation"
@@ -109,36 +188,39 @@ class EvaluationNode(SolutionElement):
         try:
             if isinstance(collection, int):
                 self.collection = api.entities_collection.get_info_by_id(collection)
-            elif collection is None:
-                raise TypeError("Collection must be either a string (name) or an integer (ID).")
-            else:
+            elif isinstance(collection, EntitiesCollectionInfo):
                 self.collection = collection
+            else:
+                raise TypeError(
+                    "Collection must be either an integer (ID) or EntitiesCollectionInfo."
+                )
         except Exception as e:
             logger.warning(f"Failed to get collection info: {e}")
 
         self._start_callbacks = []
         self._finish_callbacks = []
+        self.res_dir = None
 
         self.task_history = EvaluationTaskHistory()
+        self.main_widget = EvaluationReportGUI(team_id=self.project.team_id)
+
+        @self.main_widget.automation_switch.value_changed
+        def on_automation_switch_change(value: bool):
+            self.save(enabled=value)
+
+        @self.main_widget.agent_selector.value_changed
+        def on_agent_selector_change(value: int):
+            self.save(agent_id=value)
+
         self.modals = [self.task_history_modal, self.settings_modal, self.task_history.logs_modal]
         self.card = self._create_card()
 
-        @self.card.click
-        def show_settings():
-            self.settings_modal.show()
-
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        self._update_tooltip_properties()
+        self._update_properties(self.main_widget.automation_switch.is_switched())
 
     @property
     def automation_enabled(self) -> bool:
-        if not hasattr(self, "_automation_enabled"):
-            self._automation_enabled = False
-        return self._automation_enabled
-
-    @automation_enabled.setter
-    def automation_enabled(self, value: bool):
-        self._automation_enabled = value
+        return self.main_widget.automation_switch.is_switched()
 
     @property
     def task_history_modal(self) -> Dialog:
@@ -153,39 +235,11 @@ class EvaluationNode(SolutionElement):
     def settings_modal(self) -> Dialog:
         if not hasattr(self, "_settings_modal"):
             self._settings_modal = Dialog(
-                title="Settings", content=self._init_settings_layout(), size="tiny"
+                title="Settings",
+                content=self.main_widget.content,
+                size="tiny",
             )
         return self._settings_modal
-
-    def _init_settings_layout(self) -> Container:
-        agent_selector = AgentSelector(self.project.team_id)
-        agent_selector_field = Field(
-            agent_selector,
-            title="Select Agent for Evaluation",
-            description="Select the agent to deploy the model on.",
-            icon=Field.Icon(
-                zmdi_class="zmdi zmdi-cloud", color_rgb=(21, 101, 192), bg_color_rgb=(227, 242, 253)
-            ),
-        )
-        automation_switch = Switch()
-        automation_field = Field(
-            automation_switch,
-            title="Enable Automation",
-            description="Enable or disable automatic model re-evaluation after training.",
-            icon=Field.Icon(
-                zmdi_class="zmdi zmdi-settings",
-                color_rgb=(21, 101, 192),
-                bg_color_rgb=(227, 242, 253),
-            ),
-        )
-        self._get_agent = agent_selector.get_value
-
-        @automation_switch.value_changed
-        def on_automation_switch_change(value: bool):
-            self.automation_enabled = value
-            self._update_tooltip_properties()
-
-        return Container([agent_selector_field, automation_field], gap=20)
 
     @property
     def task_history_btn(self) -> Button:
@@ -217,11 +271,24 @@ class EvaluationNode(SolutionElement):
 
             @self._run_btn.click
             def run_cb():
-                self.node.show_in_progress_badge("Evaluation")
                 self.run()
-                self.node.hide_in_progress_badge("Evaluation")
 
         return self._run_btn
+
+    def save(self, enabled: Optional[bool] = None, agent_id: Optional[int] = None):
+        """Save settings."""
+        if enabled is None:
+            enabled = self.main_widget.automation_switch.is_switched()
+        if agent_id is None:
+            agent_id = self.main_widget.agent_selector.get_value()
+
+        self.main_widget.save_settings(enabled, agent_id)
+        self._update_properties(enabled)
+
+    def load_settings(self):
+        """Load settings from DataJson."""
+        self.main_widget.load_settings()
+        self._update_properties(self.main_widget.automation_switch.is_switched())
 
     @property
     def model(self):
@@ -232,7 +299,7 @@ class EvaluationNode(SolutionElement):
     @timeit
     def _deploy_model(self):
         try:
-            agent_id = self._get_agent()
+            agent_id = self.main_widget.agent_selector.get_value()
             if not agent_id:
                 raise ValueError("Agent ID is not set. Please select an agent.")
             # agent_info = self.api.agent.get_info_by_id(agent_id)
@@ -264,9 +331,7 @@ class EvaluationNode(SolutionElement):
             self._model = None
 
     @property
-    def eval_session_info(self) -> int:
-        # if not hasattr(self, "_eval_session_info"):
-        #     self._start_evaluator_session()
+    def eval_session_info(self) -> dict:
         if not hasattr(self, "_eval_session_info"):
             raise RuntimeError("Evaluation session info is not available.")
         return self._eval_session_info
@@ -275,7 +340,7 @@ class EvaluationNode(SolutionElement):
     def _start_evaluator_session(self):
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
         task_info_json = self.api.task.start(
-            agent_id=self._get_agent(),
+            agent_id=self.main_widget.agent_selector.get_value(),
             workspace_id=self.project.workspace_id,
             task_name="Solution: " + str(self.api.task_id),
             module_id=module_id,
@@ -304,6 +369,12 @@ class EvaluationNode(SolutionElement):
         :param skip_cb: If True, skips the finish callbacks.
         """
         try:
+            for cb in self._start_callbacks:
+                try:
+                    cb()
+                except Exception as e:
+                    logger.error(f"Error in start callback: {e}", exc_info=True)
+            self.node.show_in_progress_badge("Evaluation")
             if not hasattr(self, "_model_path"):
                 logger.warning(
                     "Model path is not set. Please set the model path before running the evaluation."
@@ -320,20 +391,52 @@ class EvaluationNode(SolutionElement):
             eval_thread.join()
 
             # send the evaluation request in a new thread
-            thread = threading.Thread(
-                target=self._run,
-                daemon=True,
-                kwargs={"skip_cb": skip_cb},
-            )
+            thread = threading.Thread(target=self._run_evaluation, daemon=True)
             thread.start()
+            thread.join()
 
-            # stop the evaluation and deployment tasks
-            self.api.task.stop(self.eval_session_info["id"])
-            self.api.task.stop(self.model.task_id)
+            # # stop the evaluation and deployment tasks
+            # self.api.task.stop(self.eval_session_info["id"])
+            # self.api.task.stop(self.model.task_id)
         except Exception as e:
             logger.error(f"Failed to run evaluation: {e}", exc_info=True)
+        finally:
+            try:
+                if hasattr(self, "_model"):
+                    self.model.shutdown()
+                    self._model = None
+                    # self.api.task.stop(self.model.task_id)
+            except Exception as e:
+                logger.error(f"Failed to shutdown model: {e}", exc_info=True)
 
-    def _run(self, skip_cb: bool = False):
+            try:
+                if hasattr(self, "_eval_session_info"):
+                    self.api.task.stop(self.eval_session_info["id"])
+                    self._eval_session_info = {}
+            except Exception as e:
+                logger.error(f"Failed to stop evaluation session: {e}", exc_info=True)
+            self.node.hide_in_progress_badge("Evaluation")
+            if not skip_cb:
+                for cb in self._finish_callbacks:
+                    if not callable(cb):
+                        logger.error(f"Finish callback {cb} is not callable.")
+                        continue
+                    try:
+                        if cb.__code__.co_argcount == 1:
+                            cb(self.res_dir)
+                        else:
+                            cb()
+                    except Exception as e:
+                        logger.error(f"Error in finish callback: {e}", exc_info=True)
+
+    def _run_evaluation(self):
+        self.res_dir = None
+        if not hasattr(self, "_model") or not self._model:
+            logger.error("Model is not deployed. Cannot run evaluation.")
+            return
+        if not hasattr(self, "_eval_session_info") or not self._eval_session_info:
+            logger.error("Evaluation session info is not available. Cannot run evaluation.")
+            return
         session_info = self.eval_session_info
         data = {
             "session_id": self.model.task_id,
@@ -349,7 +452,7 @@ class EvaluationNode(SolutionElement):
         session_info["taskId"] = self.eval_session_info["id"]
         session_info["sessionId"] = self.model.task_id
         session_info["modelPath"] = self._model_path
-        session_info["collectionName"] = self.collection.name
+        session_info["collectionName"] = self.collection.name if self.collection else "Unknown"
 
         error = response.get("error")
         res_dir = response.get("data")
@@ -358,18 +461,7 @@ class EvaluationNode(SolutionElement):
         if error:
             logger.error(f"Error during evaluation: {error}")
         elif res_dir:
-            if not skip_cb:
-                for cb in self._finish_callbacks:
-                    if not callable(cb):
-                        logger.error(f"Finish callback {cb} is not callable.")
-                        continue
-                    try:
-                        if cb.__code__.co_argcount == 1:
-                            cb(res_dir)
-                        else:
-                            cb()
-                    except Exception as e:
-                        logger.error(f"Error in finish callback: {e}", exc_info=True)
+            self.res_dir = res_dir
 
     def on_start(self, fn):
         """
@@ -389,7 +481,7 @@ class EvaluationNode(SolutionElement):
         self._model_path = model_path
 
     def _create_card(self) -> SolutionCard:
-        return SolutionCard(
+        card = SolutionCard(
             title="Re-evaluate on new validation dataset",
             tooltip=self._create_tooltip(),
             tooltip_position=self.tooltip_position,
@@ -397,35 +489,23 @@ class EvaluationNode(SolutionElement):
             icon=self.icon,
         )
 
+        @card.click
+        def show_settings():
+            self.settings_modal.show()
+
+        return card
+
     def _create_tooltip(self) -> SolutionCard.Tooltip:
         return SolutionCard.Tooltip(
             description="Re-evaluate the best model on a new validation dataset.",
-            content=[
-                self.run_btn,
-                self.task_history_btn,
-            ],
-            properties=[
-                {
-                    "key": "Auto model re-evaluation",
-                    "value": "disabled" if not self.automation_enabled else "enabled",
-                    "highlight": True,
-                    "link": False,
-                },
-            ],
+            content=[self.run_btn, self.task_history_btn],
         )
 
-    def _update_tooltip_properties(self) -> None:
-        if self.automation_enabled:
+    def _update_properties(self, enable: bool):
+        """Update node properties with current settings."""
+        value = "enabled" if enable else "disabled"
+        self.node.update_property("Re-evaluate the best model", value, highlight=enable)
+        if enable:
             self.node.show_automation_badge()
         else:
             self.node.hide_automation_badge()
-        new_props = [
-            {
-                "key": "Auto model re-evaluation",
-                "value": "disabled" if not self.automation_enabled else "enabled",
-                "highlight": True,
-                "link": False,
-            },
-        ]
-        for prop in new_props:
-            self.card.update_property(**prop)

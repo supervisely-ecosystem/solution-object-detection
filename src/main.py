@@ -118,36 +118,45 @@ n.experiments.redeploy_settings.load_settings()
 @btn.click
 def _on_start_btn_click():
     # set best model
-    best_model_path = "/experiments/2730_SOLUTION1 (training)/48663_RT-DETRv2/checkpoints/best.pth"
-    n.experiments.experiments.set_best_model(best_model_path)
-    # add best model evaluation directory to compare node
-    best_eval_dir = "/model-benchmark/2730_SOLUTION1 (training)/48664_Serve RT-DETRv2"
-    n.experiments.compare_node.evaluation_dirs = [best_eval_dir]
+    sly.logger.info("DEBUG: using dummy models for comparison")
+    try:
+        n.experiments.evaluation_report.hide_new_report_badge()
+        n.experiments.evaluation_report.node.disable()
+        n.rt_detr.eval_report_after_training.hide_new_report_badge()
+        n.rt_detr.eval_report_after_training.node.disable()
+        n.experiments.comparison_report.hide_new_report_badge()
+        n.experiments.comparison_report.node.disable()
+    except Exception as e:
+        sly.logger.warning(f"Failed to hide new report badges: {e}")
+    model_path_1 = "/experiments/2786_SOLUTION2 (training)/48699_RT-DETRv2/checkpoints/best.pth"
+    task_id_1 = int(model_path_1.split("/")[-3].split("_")[0])
 
-    # get last trained model evaluation report
-    task_id = 48663
-    task_info = g.api.task.get_info_by_id(task_id)
-    experiment_data = task_info["meta"].get("output", {}).get("experiment", {}).get("data", {})
-    report_id = experiment_data.get("evaluation_report_id")
-    report_id = 778295
-    report_info = g.api.storage.get_info_by_id(report_id)
-    report_eval_dir = report_info.path.split("visualizations/")[0]
-    n.rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir)
+    # * Set the first model as the best model
+    n.experiments.experiments.set_best_model(model_path_1)
+
+    # * Get evaluation report directory from the task info
+    task_info_1 = g.api.task.get_info_by_id(task_id_1)
+    report_eval_dir_1 = f._get_eval_dir_from_task_info(g.api, task_info_1)
+
+    # * Set evaluation report (to re-evaluate node)
+    n.experiments.evaluation_report.set_benchmark_dir(report_eval_dir_1)
+    n.experiments.evaluation_report.node.enable()
+    n.rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir_1)
     n.rt_detr.eval_report_after_training.node.enable()
 
-    # add evaluation report directory to compare node
-    # n.experiments.compare_node.evaluation_dirs.append(report_eval_dir)
+    # * Add evaluation report directory to the compare node
+    n.experiments.compare_node.evaluation_dirs = [report_eval_dir_1]
 
-    # start re-evaluation of the best model on new validation set
-    n.experiments.re_eval.set_model_path(n.experiments.experiments.best_model)
-    n.experiments.re_eval.run()  # comparison will be done automatically after re-evaluation
+    # * This is the second model (assuming it is just from training session)
+    model_path_2 = "/experiments/2786_SOLUTION2 (training)/48698_RT-DETRv2/checkpoints/best.pth"
+    task_id_2 = int(model_path_2.split("/")[-3].split("_")[0])
 
+    # * Get evaluation report directory from the task info
+    task_info_2 = g.api.task.get_info_by_id(task_id_2)
+    report_eval_dir_2 = f._get_eval_dir_from_task_info(g.api, task_info_2)
 
-# sly.logger.warning(f"No evaluation report found in task {task_id} output. Re-evaluating...")
-# artifacts_dir = task_info["meta"]["output"]["experiment"]["data"]["artifacts_dir"]
-# best_checkpoint = task_info["meta"]["output"]["experiment"]["data"]["best_checkpoint"]
-# model_path = os.path.join(artifacts_dir, "checkpoints", best_checkpoint)
-# n.re_eval.set_model_path(model_path)
-# n.re_eval.run(skip_cb=True)
-# # todo: get res eval dir from re_eval
-# # report_eval_dir
+    # * Add second evaluation report directory to the compare node
+    n.experiments.compare_node.evaluation_dirs.append(report_eval_dir_2)
+
+    # * Run the comparison (if new model is better, it will be automatically re-deployed and email will be sent)
+    n.experiments.compare_node.run()

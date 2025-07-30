@@ -6,11 +6,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import supervisely.io.env as sly_env
 from supervisely._utils import abs_url
 from supervisely.api.api import Api
-from supervisely.api.project_api import ProjectInfo
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import (
+    AgentSelector,
     Button,
     Container,
     Field,
@@ -18,6 +19,7 @@ from supervisely.app.widgets import (
     InputNumber,
     SolutionCard,
     Switch,
+    Widget,
 )
 from supervisely.app.widgets.dialog.dialog import Dialog
 from supervisely.app.widgets.tasks_history.tasks_history import TasksHistory
@@ -58,97 +60,85 @@ class ComparisonHistory(TasksHistory):
         self.update()
 
 
-class ComparisonAutomation(Automation):
-    """
-    Automation for running model comparison evaluations.
-    """
-
-    def __init__(self, func: Callable):
-        super().__init__()
-        self.func = func
-        self.widget = self._create_widget()
-        self.job_id = self.widget.widget_id
-
-    def get_automation_details(self) -> Tuple[bool, int]:
-        """
-        Returns the automation status and interval.
-        """
-        automation_settings = DataJson()[self.widget_id].get("automation_settings", {})
-        is_automated = automation_settings.get("is_automated", False)
-        automation_interval = automation_settings.get("automation_interval", 600)
-        return is_automated, automation_interval
-
-    def _create_widget(self) -> Container:
-        self.automation_switch = Switch(switched=True)
-        self.automation_periodic_input = InputNumber(600, min=60, max=3600, step=15)
-        self.automation_periodic_input.disable()
-        interval_field = Field(
-            self.automation_periodic_input,
-            "Interval (seconds)",
-            "Set the interval for periodic comparison.",
-        )
-        self.apply_btn = Button("Save")
-        automation_modal_layout = Container(
-            [
-                Field(
-                    self.automation_switch,
-                    "Periodic comparison",
-                    "Configure whether you want to automate the comparison process.",
-                ),
-                interval_field,
-                self.apply_btn,
-                Field(Container(), "Conditional comparison", "Not implemented yet."),
-            ]
-        )
-
-        @self.automation_switch.value_changed
-        def automation_switch_change_cb(is_on: bool):
-            if is_on:
-                self.automation_periodic_input.enable()
-            else:
-                self.automation_periodic_input.disable()
-
-        return automation_modal_layout
+class ComparisonGUI(Widget):
+    def __init__(
+        self,
+        team_id: Optional[int] = None,
+        widget_id: Optional[str] = None,
+    ):
+        self.team_id = team_id or sly_env.team_id()
+        super().__init__(widget_id=widget_id)
+        self.content = self._init_gui()
 
     @property
-    def modal(self) -> Dialog:
-        """
-        Returns the automation modal dialog.
-        """
-        if not hasattr(self, "_automation_modal"):
-            self._automation_modal = Dialog("Automation Settings", self.widget, "tiny")
-        return self._automation_modal
-
-    def apply(self, sec: int, *args) -> None:
-        self.scheduler.add_job(
-            self.func, interval=sec, job_id=self.job_id, replace_existing=True, *args
-        )
-        logger.info(f"Scheduled model comparison job with ID {self.job_id} every {sec} seconds.")
-
-    def remove(self):
-        if self.scheduler.is_job_scheduled(self.job_id):
-            self.scheduler.remove_job(self.job_id)
-            logger.info(f"Removed scheduled job: {self.job_id}")
-        else:
-            logger.warning(f"Job {self.job_id} is not scheduled, cannot remove it.")
+    def agent_selector(self) -> AgentSelector:
+        if not hasattr(self, "_agent_selector"):
+            self._agent_selector = AgentSelector(self.team_id)
+        return self._agent_selector
 
     @property
-    def is_scheduled(self) -> bool:
-        """
-        Check if the automation job is scheduled.
-        """
-        return self.scheduler.is_job_scheduled(self.job_id)
+    def automation_switch(self) -> Switch:
+        if not hasattr(self, "_automation_switch"):
+            self._automation_switch = Switch(switched=True)
+        return self._automation_switch
 
-    def save(self) -> None:
-        """
-        Save the current state of the automation settings.
-        """
-        DataJson()[self.widget_id]["automation_settings"] = {
-            "is_automated": self._get_automation_switch_value(),
-            "automation_interval": self._get_automation_interval(),
+    def _init_gui(self):
+        agent_selector_field = Field(
+            self.agent_selector,
+            title="Select Agent to run task",
+            description="Select the agent to run the model comparison task. GPU is not required.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-storage",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+
+        automation_field = Field(
+            self.automation_switch,
+            title="Enable Automation",
+            description="Enable or disable automatic model comparison after each evaluation.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-settings",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+
+        return Container([agent_selector_field, automation_field], gap=20)
+
+    def get_json_data(self) -> dict:
+        return {
+            "enabled": self.automation_switch.is_switched(),
+            "agent_id": self.agent_selector.get_value(),
+        }
+
+    def get_json_state(self) -> dict:
+        return {}
+
+    def save_settings(self, enabled: bool, agent_id: Optional[int] = None):
+        DataJson()[self.widget_id]["settings"] = {
+            "enabled": enabled,
+            "agent_id": agent_id if agent_id is not None else self.agent_selector.get_value(),
         }
         DataJson().send_changes()
-        logger.info("Automation settings saved.")
+
+    def load_settings(self):
+        data = DataJson().get(self.widget_id, {}).get("settings", {})
+        enabled = data.get("enabled")
+        agent_id = data.get("agent_id")
+        self.update_widgets(enabled, agent_id)
+
+    def update_widgets(self, enabled: bool, agent_id: Optional[int] = None):
+        """Set the state of widgets based on the provided parameters."""
+        if enabled is True:
+            self.automation_switch.on()
+        elif enabled is False:
+            self.automation_switch.off()
+        else:
+            pass  # do nothing, keep current state
+        if agent_id is not None:
+            self.agent_selector.set_value(agent_id)
 
 
 class CompareNode(SolutionElement):
@@ -158,26 +148,26 @@ class CompareNode(SolutionElement):
     def __init__(
         self,
         api: Api,
-        project_info: ProjectInfo,
         title: str,
         description: str,
         width: int = 250,
         x: int = 0,
         y: int = 0,
+        team_id: Optional[int] = None,
+        workspace_id: Optional[int] = None,
         icon: Optional[Icons] = None,
         tooltip_position: Literal["left", "right"] = "right",
-        agent_id: Optional[int] = None,
         *args,
         **kwargs,
     ):
         """A node for comparing evaluation reports of different models in Supervisely."""
         self.api = api
-        self.project = project_info
-        self.team_id = project_info.team_id
-        self.workspace_id = project_info.workspace_id
+        self.team_id = team_id or sly_env.team_id()
+        self.workspace_id = workspace_id or sly_env.workspace_id()
         self.title = title
         self.description = description
         self.width = width
+        self.tooltip_position = tooltip_position
         self.icon = icon or Icons(
             class_name="zmdi zmdi-compare",
             color="#1976D2",
@@ -185,56 +175,30 @@ class CompareNode(SolutionElement):
         )
         super().__init__(*args, **kwargs)
 
-        self.tooltip_position = tooltip_position
         self._eval_dirs = []  # List of directories to compare
 
         self.result_dir = None
         self.result_link = None
         self.result_best_checkpoint = None
 
-        self.agent_id = agent_id or self.get_available_agent_id()
-        if self.agent_id is None:
-            raise ValueError("No available agent found. Please check your agents.")
-
-        self.automation = ComparisonAutomation(self.run)
         self.tasks_history = ComparisonHistory()
+        self.main_widget = ComparisonGUI(team_id=self.team_id)
+
+        @self.main_widget.automation_switch.value_changed
+        def on_automation_switch_change(value: bool):
+            self.save(enabled=value)
+
+        @self.main_widget.agent_selector.value_changed
+        def on_agent_selector_change(value: int):
+            self.save(agent_id=value)
+
         self.tasks_modal = Dialog(title="Comparison History", content=self.tasks_history)
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        self.modals = [self.tasks_modal, self.automation.modal]
-
+        self.modals = [self.tasks_modal, self.settings_modal]
         self._finish_callbacks = []
 
-        @self.automation.apply_btn.click
-        def enable_automation():
-            self.automation.modal.hide()
-            enabled, sec = self.automation.get_automation_details()
-            if not enabled:
-                logger.info("Periodic comparison automation disabled.")
-                self.automation.scheduler.remove_job(self.job_id)
-                self.node.hide_automation_badge()
-            else:
-                self.automation.apply(sec)
-                logger.info(f"Scheduled periodic comparison every {sec} seconds.")
-            self.node.show_automation_badge()
-
-            self.automation.save()
-
-    @property
-    def is_automated(self) -> bool:
-        """
-        Returns whether the comparison is automated.
-        """
-        is_automated, _ = self.automation.get_automation_details()
-        return is_automated
-
-    @property
-    def automation_interval(self) -> int:
-        """
-        Returns the automation interval in seconds.
-        """
-        _, automation_interval = self.automation.get_automation_details()
-        return automation_interval
+        self._update_properties(self.main_widget.automation_switch.is_switched())
 
     @property
     def evaluation_dirs(self) -> List[str]:
@@ -254,6 +218,19 @@ class CompareNode(SolutionElement):
         else:
             self._run_btn.disable()
 
+    @property
+    def settings_modal(self) -> Dialog:
+        """
+        Returns the settings modal dialog for the Compare widget.
+        """
+        if not hasattr(self, "_settings_modal"):
+            self._settings_modal = Dialog(
+                title="Settings",
+                content=self.main_widget.content,
+                size="tiny",
+            )
+        return self._settings_modal
+
     def _create_card(self) -> SolutionCard:
         """
         Creates and returns the SolutionCard for the Compare widget.
@@ -268,14 +245,17 @@ class CompareNode(SolutionElement):
 
         @card.click
         def _on_card_click():
-            self.automation.modal.show()
+            self.settings_modal.show()
 
         return card
 
     def _create_tooltip(self) -> SolutionCard.Tooltip:
-        return SolutionCard.Tooltip(description=self.description, content=self._get_buttons())
+        return SolutionCard.Tooltip(
+            description=self.description, content=[self.run_btn, self.history_btn]
+        )
 
-    def _get_buttons(self):
+    @property
+    def run_btn(self) -> Button:
         if not hasattr(self, "_run_btn"):
             self._run_btn = Button(
                 "Run manually",
@@ -291,30 +271,31 @@ class CompareNode(SolutionElement):
                 self.run()
                 self._run_btn.enable()
 
-        if not hasattr(self, "_tasks_history_btn"):
-            self._tasks_history_btn = Button(
-                "Tasks History",
+        return self._run_btn
+
+    @property
+    def history_btn(self) -> Button:
+        if not hasattr(self, "_history_btn"):
+            self._history_btn = Button(
+                "History",
                 icon="zmdi zmdi-format-list-bulleted",
                 button_size="mini",
                 plain=True,
                 button_type="text",
             )
 
-            @self._tasks_history_btn.click
-            def show_tasks_history():
+            @self._history_btn.click
+            def show_history():
                 self.tasks_modal.show()
 
-        return [
-            self._run_btn,
-            self._tasks_history_btn,
-        ]
+        return self._history_btn
 
-    def run_evaluator_session(self) -> Optional[int]:
+    def run_evaluator_session(self) -> Optional[Dict[str, Any]]:
         module_id = self.api.app.get_ecosystem_module_id(self.APP_SLUG)
 
         logger.info("Starting Model Benchmark Evaluator task...")
         task_info_json = self.api.task.start(
-            agent_id=self.agent_id,
+            agent_id=self.main_widget.agent_selector.get_value(),
             app_id=None,
             workspace_id=self.workspace_id,
             description=f"Solutions: {self.api.task_id}",
@@ -323,7 +304,7 @@ class CompareNode(SolutionElement):
         task_id = task_info_json["id"]
 
         current_time = time.time()
-        while task_status := self.api.task.get_status(task_id) != self.api.task.Status.STARTED:
+        while (task_status := self.api.task.get_status(task_id)) != self.api.task.Status.STARTED:
             logger.info("Waiting for the evaluation task to start... Status: %s", task_status)
             time.sleep(5)
             if time.time() - current_time > 300:  # 5 minutes timeout
@@ -343,22 +324,20 @@ class CompareNode(SolutionElement):
         Sends a request to the backend to start the evaluation process.
         """
         try:
-            self.node.show_in_progress_badge("Comparing")
-            if len(self.evaluation_dirs) == 1:
+            self.node.show_in_progress_badge("Comparison")
+            if not self.evaluation_dirs:
+                logger.warning("Not enough evaluation directories provided for comparison.")
+            elif len(self.evaluation_dirs) == 1:
                 logger.warning(
                     "Only one evaluation directory provided. Cannot compare. Using the single directory for results."
                 )
                 self.result_dir = self.evaluation_dirs[0]
                 self.result_link = self._get_url_from_lnk_path(self.result_dir)
-            elif len(self.evaluation_dirs) < 2:
-                logger.warning("Not enough evaluation directories provided for comparison.")
             else:
                 task_info = self.run_evaluator_session()
-                task_info["evaluation_dirs"] = self.evaluation_dirs
                 if task_info is None:
-                    task_info["status"] = self.api.task.Status.ERROR
-                    self.tasks_history.add_task(task_info)
                     raise RuntimeError("Failed to start the evaluation task.")
+                task_info["evaluation_dirs"] = self.evaluation_dirs
                 task_id = task_info["id"]
                 response = self.api.task.send_request(
                     task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.evaluation_dirs}
@@ -377,15 +356,18 @@ class CompareNode(SolutionElement):
                 task_info["result_link"] = abs_url(self.result_link)
                 self.tasks_history.add_task(task_info)
                 self.api.task.stop(task_id)
-            for cb in self._finish_callbacks:
-                cb(self.result_dir, self.result_link)
-            logger.info(f"Evaluation completed successfully. Task ID: {task_id}")
+                logger.info(f"Evaluation completed successfully. Task ID: {task_id}")
         except Exception as e:
             logger.error(f"Evaluation failed. {e}", exc_info=True)
         finally:
-            self.node.hide_in_progress_badge("Comparing")
+            self.node.hide_in_progress_badge("Comparison")
+            for cb in self._finish_callbacks:
+                try:
+                    cb(self.result_dir, self.result_link)
+                except Exception as e:
+                    logger.error(f"Error in finish callback: {e}", exc_info=True)
 
-    def get_available_agent_id(self) -> int:
+    def get_available_agent_id(self) -> Optional[int]:
         agents = self.api.agent.get_list_available(self.team_id, True)
         return agents[0].id if agents else None
 
@@ -412,8 +394,14 @@ class CompareNode(SolutionElement):
 
         return base_url
 
-    def _update_properties(self):
-        pass
+    def _update_properties(self, enable: bool):
+        """Update node properties with current settings."""
+        value = "enabled" if enable else "disabled"
+        self.node.update_property("Compare models", value, highlight=enable)
+        if enable:
+            self.node.show_automation_badge()
+        else:
+            self.node.hide_automation_badge()
 
     def is_new_model_better(self, primary_metric: str) -> bool:
         """
@@ -490,3 +478,22 @@ class CompareNode(SolutionElement):
             if os.path.exists(temp_file.name):
                 silent_remove(temp_file.name)
         return metric, best_checkpoint_path
+
+    def save(self, enabled: Optional[bool] = None, agent_id: Optional[int] = None):
+        """Save re-deploy settings."""
+        if enabled is None:
+            enabled = self.main_widget.automation_switch.is_switched()
+        if agent_id is None:
+            agent_id = self.main_widget.agent_selector.get_value()
+
+        self.main_widget.save_settings(enabled, agent_id)
+        self._update_properties(enabled)
+
+    def load_settings(self):
+        """Load re-deploy settings from DataJson."""
+        self.main_widget.load_settings()
+        self._update_properties(self.main_widget.automation_switch.is_switched())
+
+    def is_enabled(self) -> bool:
+        """Check if re-deploy is enabled."""
+        return self.main_widget.automation_switch.is_switched()

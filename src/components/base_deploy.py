@@ -16,6 +16,7 @@ from supervisely.app.widgets import (
     InputNumber,
     Select,
     SolutionCard,
+    Switch,
     TasksHistory,
     Text,
     Widget,
@@ -33,7 +34,6 @@ from supervisely.solution.utils import (
 class DeployTasksAutomation(Automation):
     REFRESH_RATE = 30  # seconds
     REFRESH_GPU_USAGE = "refresh_gpu_usage"
-    FREEZE_MODEL = "freeze_model_automation"
 
     def apply(self, func: Optional[Callable], job_id: str, sec: int = None) -> None:
         if self.scheduler.is_job_scheduled(job_id):
@@ -86,59 +86,55 @@ class BaseDeployGUI(Widget):
         super().__init__(widget_id=widget_id)
         self.content = self._init_gui()
 
-    @property
-    def select_agent(self):
-        if not hasattr(self, "_select_agent"):
-            self._select_agent = AgentSelector(team_id=self.team_id, compact=True)
-        return self._select_agent
+    def _init_gui(self):
+        model_input_field = Field(
+            self.model_name_input,
+            title="Model",
+            description="Enter the name of the Pre-trained model or the path to a Custom checkpoint in Team Files.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-memory",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+        agent_selector_field = Field(
+            Container([self.agent_selector, self.change_agent_button], gap=15),
+            title="Select Agent",
+            description="Select the agent to deploy the model on.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-storage",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+        optimize_gpu_field = Field(
+            self.optimize_gpu_switch,
+            title="Optimize Memory Usage",
+            description="The model will be automatically unloaded from memory after a period of inactivity or to free up GPU memory for other tasks (e.g. training).",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-settings",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
 
-    @property
-    def select_agent_field(self):
-        if not hasattr(self, "_select_agent_field"):
-            self._select_agent_field = Field(
-                title="Select Agent",
-                content=self.select_agent_container,
-                description="Select an agent to deploy the model.",
-            )
-        return self._select_agent_field
+        deploy_button_container = Container(
+            widgets=[self.freeze_model_button, self.stop_button, self.deploy_button],
+            direction="horizontal",
+            overflow="wrap",
+            style="display: flex; justify-content: flex-end;",
+            widgets_style="display: flex; flex: none;",
+        )
 
-    @property
-    def change_agent_button(self):
-        if not hasattr(self, "_change_agent_button"):
-            self._change_agent_button = Button(
-                text="Change Agent",
-                icon="zmdi zmdi-refresh",
-                button_type="text",
-                button_size="mini",
-                plain=True,
-            )
-
-            @self._change_agent_button.click
-            def _on_change_agent_click():
-                self.select_agent.enable()
-                if self.model is not None:
-                    self.enable_gui()
-                    self.model.shutdown()
-                    self.model = None
-
-            self._change_agent_button.hide()
-
-        return self._change_agent_button
-
-    @property
-    def select_agent_container(self):
-        if not hasattr(self, "_select_agent_container"):
-            self._select_agent_container = Flexbox(
-                [
-                    self.select_agent,
-                    self.change_agent_button,
-                ],
-                vertical_alignment="center",
-                gap=15,
-                # style="padding-top: 10px;",
-                # direction="horizontal",
-            )
-        return self._select_agent_container
+        return Container(
+            [
+                model_input_field,
+                agent_selector_field,
+                optimize_gpu_field,
+                deploy_button_container,
+            ],
+            gap=20,
+        )
 
     @property
     def model_name_input(self):
@@ -149,108 +145,69 @@ class BaseDeployGUI(Widget):
         return self._model_name_input
 
     @property
-    def model_name_input_container(self):
-        if not hasattr(self, "_model_name_input_container"):
-            self._model_name_input_container = Container(
-                widgets=[
-                    Field(
-                        title="Model",
-                        content=self.model_name_input,
-                        description="Enter the name of the Pre-trained model or the path to a Custom checkpoint in Team Files.",
-                    ),
-                ],
-                style="padding-top: 15px;",
-            )
-        return self._model_name_input_container
+    def optimize_gpu_switch(self) -> Switch:
+        if not hasattr(self, "_optimize_gpu_switch"):
+            self._optimize_gpu_switch = Switch(switched=True)
+            self._optimize_gpu_switch.disable()
+        return self._optimize_gpu_switch
 
     @property
-    def enable_autofreeze_checkbox(self):
-        if not hasattr(self, "_enable_stopping_checkbox"):
-            self._enable_stopping_checkbox = CheckboxField(
-                title="Optimize Memory Usage",
-                description="If enabled, the model will be automatically unloaded from memory after a period of inactivity or to free up GPU memory for other tasks (e.g. training).",
-                checked=False,
-            )
-        return self._enable_stopping_checkbox
+    def agent_selector(self) -> AgentSelector:
+        if not hasattr(self, "_agent_selector"):
+            self._agent_selector = AgentSelector(self.team_id)
+        return self._agent_selector
 
     @property
-    def enable_autofreeze_container(self):
-        if not hasattr(self, "_enable_autofreeze_container"):
-
-            interval_input = InputNumber(
-                min=1, value=60, debounce=1000, controls=False, size="mini"
-            )
-            interval_input.disable()
-            period_select = Select(
-                [
-                    Select.Item("min", "minutes"),
-                    Select.Item("h", "hours"),
-                    Select.Item("d", "days"),
-                ],
-                size="mini",
-            )
-            period_select.disable()
-
-            settings_container = Container(
-                [interval_input, period_select, Empty()],
-                direction="horizontal",
-                gap=3,
-                fractions=[1, 1, 1],
-                style="align-items: center",
-            )
-            self._enable_autofreeze_container = Container(
-                widgets=[
-                    self.enable_autofreeze_checkbox,
-                    settings_container,
-                ],
+    def freeze_model_button(self):
+        if not hasattr(self, "_freeze_model_button"):
+            self._freeze_model_button = Button(
+                text="Freeze Model",
+                icon="zmdi zmdi-eject",
+                plain=True,
             )
 
-            @self.enable_autofreeze_checkbox.value_changed
-            def _on_checkbox_change(checked: bool):
-                if checked:
-                    interval_input.enable()
-                    period_select.enable()
-                else:
-                    interval_input.disable()
-                    period_select.disable()
+            @self._freeze_model_button.click
+            def _on_freeze_model_click():
+                if self.model is None:
+                    show_dialog(
+                        title="Warning",
+                        description="No model is currently deployed. Nothing to freeze.",
+                        status="warning",
+                    )
+                    return
+                logger.info("Freezing model...")
+                res = self.model.freeze_model()
+                if isinstance(res, dict) and "message" in res:
+                    logger.info(res["message"])
 
-            self.get_autofreeze_settings = lambda: get_seconds_from_period_and_interval(
-                period_select.get_value(),
-                interval_input.get_value(),
+            self._freeze_model_button.hide()
+
+        return self._freeze_model_button
+
+    @property
+    def change_agent_button(self):
+        if not hasattr(self, "_change_agent_button"):
+            self._change_agent_button = Button(
+                text="Change Agent",
+                button_type="text",
+                button_size="mini",
+                plain=True,
             )
 
-            def __set_autofreeze_settings(
-                sec: Optional[int] = None,
-                period: Optional[Literal["min", "h", "d"]] = None,
-                interval: Optional[int] = None,
-            ):
-                if sec is not None:
-                    period, interval = get_interval_period(sec)
-                period_select.set_value(period)
-                interval_input.value = interval
+            @self._change_agent_button.click
+            def _on_change_agent_click():
+                self.agent_selector.enable()
+                if self.model is not None:
+                    self.enable_gui()
+                    self.model.shutdown()
+                    self.model = None
 
-            self._set_autofreeze_settings = lambda p, i: __set_autofreeze_settings(p, i)
-        return self._enable_autofreeze_container
+            self._change_agent_button.hide()
 
-    def set_autofreeze_settings(
-        self,
-        sec: Optional[int] = None,
-        period: Optional[str] = None,
-        interval: Optional[int] = None,
-    ):
-        """
-        Sets the autofreeze settings for the model.
-        :param sec: Total seconds of inactivity after which the model will be frozen (optional).
-        :param period: The period of inactivity after which the model will be frozen (optional).
-        :param interval: The interval in the specified period (optional).
-
-        If sec is provided, period and interval are ignored.
-        """
-        self._set_autofreeze_settings(sec, period, interval)
+        return self._change_agent_button
 
     @property
     def deploy_button(self):
-        self.set_autofreeze_settings
         if not hasattr(self, "_deploy_button"):
             self._deploy_button = Button(text="Deploy")
         return self._deploy_button
@@ -262,33 +219,6 @@ class BaseDeployGUI(Widget):
             self._stop_button.hide()
         return self._stop_button
 
-    @property
-    def deploy_button_container(self):
-        if not hasattr(self, "_deploy_button_container"):
-            self._deploy_button_container = Container(
-                widgets=[self.stop_button, self.deploy_button],
-                direction="horizontal",
-                overflow="wrap",
-                style="display: flex; justify-content: flex-end;",
-                widgets_style="display: flex; flex: none;",
-            )
-        return self._deploy_button_container
-
-    def _init_gui(self):
-        return Container(
-            widgets=[
-                Container(
-                    widgets=[
-                        self.model_name_input_container,
-                        self.select_agent_field,
-                        self.enable_autofreeze_container,
-                        self.deploy_button_container,
-                    ],
-                    gap=20,
-                ),
-            ],
-        )
-
     def deploy(
         self,
         model: Optional[str] = None,
@@ -296,18 +226,19 @@ class BaseDeployGUI(Widget):
         stop_current: bool = True,
     ) -> None:
         try:
-            if model is None:
-                model = self.model_name_input.get_value()
-            else:
-                self.model_name_input.set_value(model)
             if self.model is not None and stop_current:
                 self.model.shutdown()
                 self.enable_gui()
                 self.model = None
-            if agent_id is None:
-                agent_id = self.select_agent.get_value()
+
+            if model is None:
+                model = self.model_name_input.get_value()
             else:
-                self.select_agent.set_value(agent_id)
+                self.model_name_input.set_value(model)
+            if agent_id is None:
+                agent_id = self.agent_selector.get_value()
+            else:
+                self.agent_selector.set_value(agent_id)
             if not model:
                 show_dialog(
                     title="Error", description="Model name cannot be empty.", status="error"
@@ -324,24 +255,6 @@ class BaseDeployGUI(Widget):
             self.model = None
             self.enable_gui()
 
-    def freeze_model(self):
-        """
-        Method to unload the model from the memory. Can be used to free up GPU memory without stopping the serving app.
-        """
-        if self.model is None:
-            logger.warning("Model is not deployed. Cannot freeze.")
-            return
-        try:
-            if self.model._model_frozen:
-                logger.warning("Model is already frozen.")
-            else:
-                self.model._freeze_model()
-            self.automation.remove(self.automation.FREEZE_TASKS_AUTOMATION)
-            # self.enable_gui()
-            # self.model = None
-        except Exception as e:
-            logger.error(f"Failed to freeze model: {e}", exc_info=True)
-
     def get_json_data(self) -> dict:
         return {}
 
@@ -349,20 +262,20 @@ class BaseDeployGUI(Widget):
         return {}
 
     def enable_gui(self):
-        self.select_agent.enable()
+        self.agent_selector.enable()
         self.model_name_input.enable()
         self.deploy_button.show()
+        self.freeze_model_button.hide()
         self.stop_button.hide()
         self.change_agent_button.hide()
-        self.enable_autofreeze_checkbox.enable()
 
     def disable_gui(self):
-        self.select_agent.disable()
+        self.agent_selector.disable()
         self.model_name_input.disable()
         self.deploy_button.hide()
+        self.freeze_model_button.show()
         self.stop_button.show()
         self.change_agent_button.show()
-        self.enable_autofreeze_checkbox.disable()
 
 
 class BaseDeployNode(SolutionElement):
@@ -405,7 +318,8 @@ class BaseDeployNode(SolutionElement):
                 self.main_widget.model.shutdown()
                 self.main_widget.enable_gui()
                 self.session_link = ""
-                self.automation.remove(self.automation.FREEZE_MODEL)
+                self.main_widget.model = None
+                self._update_properties()
             except Exception as e:
                 show_dialog(
                     title="Error",
@@ -487,10 +401,7 @@ class BaseDeployNode(SolutionElement):
 
     @session_link.setter
     def session_link(self, value: str):
-        if not hasattr(self, "_session_link"):
-            setattr(self, "_session_link", value)
-        else:
-            self._session_link = value
+        self._session_link = value
         self.open_session_button.link = value
 
     @property
@@ -517,16 +428,8 @@ class BaseDeployNode(SolutionElement):
             task_info, deploy_info = self._get_deployed_model_info()
             self.tasks_history.add_task({"task_info": task_info, "deploy_info": deploy_info})
 
-            self.session_link = self.main_widget.model.url
             self._update_properties(deploy_info)
-            if self.main_widget.enable_autofreeze_checkbox.is_checked():
-                sec = self.main_widget.get_autofreeze_settings()
-                if sec:
-                    self.automation.apply(
-                        self.main_widget.freeze_model,
-                        self.automation.FREEZE_MODEL,
-                        sec,
-                    )
+            return self.main_widget.model.task_id
         except Exception as e:
             show_dialog(
                 title="Deployment Error",
@@ -552,13 +455,15 @@ class BaseDeployNode(SolutionElement):
 
         """
         try:
-            agent_id = self.main_widget.select_agent.get_value()
+            agent_id = self.main_widget.agent_selector.get_value()
             if agent_id is None:
                 return None
             agent_info = self.api.agent.get_info_by_id(agent_id)
-            if not hasattr(agent_info, "gpu_info"):
+            if agent_info is None or not hasattr(agent_info, "gpu_info"):
                 return None
-            if not isinstance(agent_info.gpu_info, dict) or "device_memory" not in agent_info.gpu_info:
+            if not isinstance(agent_info.gpu_info, dict):
+                return None
+            if "device_memory" not in agent_info.gpu_info:
                 return None
             return {
                 "available": agent_info.gpu_info["device_memory"][0]["available"],
@@ -588,8 +493,6 @@ class BaseDeployNode(SolutionElement):
             self.card.remove_property_by_key("Agent")
             self.card.remove_property_by_key("GPU Memory")
 
-        # self._update_properties()
-
     def _update_properties(self, deploy_info: Optional[Dict] = None) -> None:
         """
         Updates the properties of the card with the current model and agent information.
@@ -600,12 +503,8 @@ class BaseDeployNode(SolutionElement):
             self.card.update_property("Source", deploy_info["model_source"])
             self.card.update_property("Hardware", deploy_info["hardware"])
             self.card.update_property("Model", deploy_info["model_name"], False, True)
-            if self.main_widget.model._model_frozen:
-                self.node.hide_automation_badge()
-                self.card.update_property("Status", "Unloaded from memory", False, True)
-            else:
-                self.node.show_automation_badge()
-                self.card.remove_property_by_key("Status")
+            self.node.show_automation_badge()
+            self.card.update_property("Status", "Model deployed", highlight=True)
         else:
             self.node.hide_automation_badge()
             self.card.remove_property_by_key("Status")

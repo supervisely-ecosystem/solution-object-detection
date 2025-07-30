@@ -39,10 +39,8 @@ re_eval.set_model_path(
 
 compare_node = CompareNode(
     g.api,
-    g.project,
     title="Compare Models",
     description="Compare evaluation results from the latest training session againt the best model reference report. Helps track performance improvements over time and identify the most effective training setups. If the new model performs better, it can be used to re-deploy the NN model for pre-labeling to speed-up the process.",
-    width=250,
     x=1300,
     y=2300,
     tooltip_position="left",
@@ -72,7 +70,6 @@ api_inference_node = ApiInferenceNode(
     "src/assets/api_inference.md",
     x=2000,
     y=2400,
-    tooltip_position="left",
     markdown_title="Inference API Quickstart",
 )
 
@@ -103,11 +100,12 @@ def on_compare_finished(res_dir, res_link) -> None:
         message = f"Comparison report is ready: <a href='{url}' target='_blank'>View Report</a>"
         send_email.run(text=message)
 
-    if redeploy_settings.is_enabled() and compare_node.is_new_model_better("mAP"):
+    if redeploy_settings.is_enabled() and compare_node.is_new_model_better(primary_metric="mAP"):
         agent_id = redeploy_settings.get_agent_id()
-        deploy_custom_model_node.deploy(
+        deployed_task_id = deploy_custom_model_node.deploy(
             model=compare_node.result_best_checkpoint, agent_id=agent_id
         )
+        api_inference_node.set_task_id(deployed_task_id)
 
 
 @rt_detr.train_node.on_train_started
@@ -174,8 +172,13 @@ def _on_train_rt_detr_finished(task_id: int):
         experiments.set_best_model(model_path)
         evaluation_report.set_benchmark_dir(report_eval_dir)
         evaluation_report.node.enable()
-        agent_id = redeploy_settings.get_agent_id()
-        deploy_custom_model_node.deploy(model=experiments.best_model, agent_id=agent_id)
+        if redeploy_settings.is_enabled():
+            sly.logger.info("Redeploying the best model after RT-DETR training.")
+            agent_id = redeploy_settings.get_agent_id()
+            deployed_task_id = deploy_custom_model_node.deploy(
+                model=experiments.best_model, agent_id=agent_id
+            )
+            api_inference_node.set_task_id(deployed_task_id)
 
 
 @yolo.train_node.on_train_finished
@@ -219,5 +222,12 @@ def _on_train_yolo_finished(task_id: int):
     elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)
-        agent_id = redeploy_settings.get_agent_id()
-        deploy_custom_model_node.deploy(model=experiments.best_model, agent_id=agent_id)
+        evaluation_report.set_benchmark_dir(report_eval_dir)
+        evaluation_report.node.enable()
+        if redeploy_settings.is_enabled():
+            sly.logger.info("Redeploying the best model after YOLO training.")
+            agent_id = redeploy_settings.get_agent_id()
+            deployed_task_id = deploy_custom_model_node.deploy(
+                model=experiments.best_model, agent_id=agent_id
+            )
+            api_inference_node.set_task_id(deployed_task_id)

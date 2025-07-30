@@ -16,6 +16,7 @@ from supervisely.app.widgets import (
     Icons,
     Input,
     SolutionCard,
+    Switch,
     Text,
     Widget,
 )
@@ -35,99 +36,59 @@ class RedeploySettingsGUI(Widget):
         self.content = self._init_gui()
 
     def _init_gui(self):
-        return Container(
-            widgets=[
-                Container(
-                    widgets=[
-                        self.checkbox_field,
-                        self.select_agent_field,
-                        self.save_button_container,
-                    ],
-                    gap=20,
-                ),
-            ],
+        agent_selector_field = Field(
+            self.agent_selector,
+            title="Select Agent to run task",
+            description="Select the agent to deploy the model on.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-storage",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
+        )
+        automation_field = Field(
+            self.automation_switch,
+            title="Enable Automation",
+            description="Enable or disable automatic model deployment after training.",
+            icon=Field.Icon(
+                zmdi_class="zmdi zmdi-settings",
+                color_rgb=(21, 101, 192),
+                bg_color_rgb=(227, 242, 253),
+            ),
         )
 
-    @property
-    def checkbox_field(self):
-        if not hasattr(self, "_checkbox_field"):
-            self._checkbox_field = Field(
-                title="Enable best Model Deployment",
-                description="If enabled, the best model will be automatically deployed after comparing models.",
-                content=self.checkbox,
-            )
-        return self._checkbox_field
+        return Container([agent_selector_field, automation_field], gap=20)
 
     @property
-    def checkbox(self):
-        if not hasattr(self, "_checkbox"):
-            self._checkbox = Checkbox(content="enable", checked=True)
-        return self._checkbox
+    def automation_switch(self) -> Switch:
+        if not hasattr(self, "_automation_switch"):
+            self._automation_switch = Switch(switched=True)
+        return self._automation_switch
 
     @property
-    def select_agent(self):
-        if not hasattr(self, "_select_agent"):
-            self._select_agent = AgentSelector(team_id=self.team_id, compact=True)
-        return self._select_agent
-
-    @property
-    def select_agent_field(self):
-        if not hasattr(self, "_select_agent_field"):
-            self._select_agent_field = Field(
-                title="Select Agent",
-                content=self.select_agent_container,
-                description="Select an agent to deploy the model.",
-            )
-        return self._select_agent_field
-
-    @property
-    def select_agent_container(self):
-        if not hasattr(self, "_select_agent_container"):
-            self._select_agent_container = Flexbox(
-                [self.select_agent],
-                vertical_alignment="center",
-                gap=15,
-                # style="padding-top: 10px;",
-                # direction="horizontal",
-            )
-        return self._select_agent_container
-
-    @property
-    def save_button(self):
-        if not hasattr(self, "_save_button"):
-            self._save_button = Button(text="Save")
-        return self._save_button
-
-    @property
-    def save_button_container(self):
-        if not hasattr(self, "_save_button_container"):
-            self._save_button_container = Container(
-                widgets=[self.save_button],
-                direction="horizontal",
-                overflow="wrap",
-                style="display: flex; justify-content: flex-end;",
-                widgets_style="display: flex; flex: none;",
-            )
-        return self._save_button_container
+    def agent_selector(self) -> AgentSelector:
+        if not hasattr(self, "_agent_selector"):
+            self._agent_selector = AgentSelector(self.team_id)
+        return self._agent_selector
 
     def get_json_data(self) -> dict:
         return {
-            "enabled": self.checkbox.is_checked(),
-            "agent_id": self.select_agent.get_value(),
+            "enabled": self.automation_switch.is_switched(),
+            "agent_id": self.agent_selector.get_value(),
         }
 
     def get_json_state(self) -> dict:
         return {}
 
     def save_settings(self, enabled: bool, agent_id: Optional[int] = None):
-        DataJson()[self.widget_id]["redeploy_settings"] = {
+        DataJson()[self.widget_id]["settings"] = {
             "enabled": enabled,
-            "agent_id": agent_id,
+            "agent_id": agent_id if agent_id is not None else self.agent_selector.get_value(),
         }
         DataJson().send_changes()
 
     def load_settings(self):
-        data = DataJson().get(self.widget_id, {}).get("redeploy_settings", {})
+        data = DataJson().get(self.widget_id, {}).get("settings", {})
         enabled = data.get("enabled")
         agent_id = data.get("agent_id")
         self.update_widgets(enabled, agent_id)
@@ -135,13 +96,13 @@ class RedeploySettingsGUI(Widget):
     def update_widgets(self, enabled: bool, agent_id: Optional[int] = None):
         """Set re-deploy settings."""
         if enabled is True:
-            self.checkbox.check()
+            self.automation_switch.on()
         elif enabled is False:
-            self.checkbox.uncheck()
+            self.automation_switch.off()
         else:
             pass  # do nothing, keep current state
         if agent_id is not None:
-            self.select_agent.set_value(agent_id)
+            self.agent_selector.set_value(agent_id)
 
 
 class RedeploySettingsNode(SolutionElement):
@@ -153,17 +114,22 @@ class RedeploySettingsNode(SolutionElement):
         *args,
         **kwargs,
     ):
+        super().__init__(*args, **kwargs)
         self.main_widget = RedeploySettingsGUI(team_id=env_team_id())
 
-        @self.main_widget.save_button.click
-        def _on_save_button_click():
-            self.settings_modal.hide()
-            self.save()
+        @self.main_widget.automation_switch.value_changed
+        def on_automation_switch_change(value: bool):
+            self.save(enabled=value)
+
+        @self.main_widget.agent_selector.value_changed
+        def on_agent_selector_change(value: int):
+            self.save(agent_id=value)
 
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
         self.modals = [self.settings_modal]
-        super().__init__(*args, **kwargs)
+
+        self._update_properties(self.main_widget.automation_switch.is_switched())
 
     def _create_card(self) -> SolutionCard:
         card = SolutionCard(
@@ -203,7 +169,7 @@ class RedeploySettingsNode(SolutionElement):
             size="tiny",
         )
 
-    def update_properties(self, enable: bool):
+    def _update_properties(self, enable: bool):
         """Update node properties with current re-deploy settings."""
         value = "enabled" if enable else "disabled"
         self.node.update_property("Re-deploy the best model", value, highlight=enable)
@@ -215,23 +181,22 @@ class RedeploySettingsNode(SolutionElement):
     def save(self, enabled: Optional[bool] = None, agent_id: Optional[int] = None):
         """Save re-deploy settings."""
         if enabled is None:
-            enabled = self.main_widget.checkbox.is_checked()
+            enabled = self.main_widget.automation_switch.is_switched()
         if agent_id is None:
-            agent_id = self.main_widget.select_agent.get_value()
+            agent_id = self.main_widget.agent_selector.get_value()
 
         self.main_widget.save_settings(enabled, agent_id)
-        self.update_properties(enabled)
+        self._update_properties(enabled)
 
     def load_settings(self):
         """Load re-deploy settings from DataJson."""
         self.main_widget.load_settings()
-        self.update_properties(self.main_widget.checkbox.is_checked())
-        self.save()
+        self._update_properties(self.main_widget.automation_switch.is_switched())
 
     def is_enabled(self) -> bool:
         """Check if re-deploy is enabled."""
-        return self.main_widget.checkbox.is_checked()
+        return self.main_widget.automation_switch.is_switched()
 
     def get_agent_id(self) -> Optional[int]:
         """Get selected agent ID for re-deploy."""
-        return self.main_widget.select_agent.get_value()
+        return self.main_widget.agent_selector.get_value()

@@ -1,16 +1,13 @@
 ## Connect to existing model
 
-If your model is already deployed in Supervisely, you just need to connect to it using the `api.nn.connect()` method, providing a `task_id` of the running serving app. This method returns a `ModelAPI` object for running predictions.
+Once your model is deployed in Supervisely, you can connect to it using the `api.nn.connect()` method. You need to provide the `task_id` of the running serving app. This method returns a `ModelAPI` object that you can use to run predictions.
 
 ```python
 import supervisely as sly
 
-api = sly.Api()
+api = sly.Api.from_env()
 
-# Connect to a deployed model
-model = api.nn.connect(
-    task_id=122,  # Task ID of a running Serving App in Supervisely
-)
+model = api.nn.connect(task_id=12345)
 ```
 
 ## Predict
@@ -20,7 +17,7 @@ After you've connected to the model, you can use it to make predictions. Here's 
 ```python
 # Predicting multiple images
 predictions = model.predict(
-    input=["image1.jpg",  "image2.jpg"],
+    input=["path/to/image1.jpg",  "path/to/image2.jpg"],
 )
 
 # Iterating through predictions
@@ -77,6 +74,7 @@ predictions = model.predict(project_id=123)
 predictions = model.predict(dataset_id=456)
 predictions = model.predict(video_id=1212)
 ```
+
 </details>
 
 <details>
@@ -96,9 +94,9 @@ Models can also be run standalone (PyTorch / ONNX / TensorRT). You’ll need to:
    ```
 4. Run one of the demos (PyTorch / ONNX / TensorRT):
 
-   * [demo_pytorch.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_pytorch.py)
-   * [demo_onnx.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_onnx.py)
-   * [demo_tensorrt.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_tensorrt.py)
+   - [demo_pytorch.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_pytorch.py)
+   - [demo_onnx.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_onnx.py)
+   - [demo_tensorrt.py](https://github.com/supervisely-ecosystem/RT-DETRv2/blob/main/supervisely_integration/demo/demo_tensorrt.py)
 
 Example snippet from `demo_pytorch.py`:
 
@@ -125,4 +123,5 @@ output = model(data)
 ```
 
 See full standalone inference documentation [here](https://docs.supervisely.com/neural-networks/overview-1/using-standalone-pytorch-models).
+
 </details>

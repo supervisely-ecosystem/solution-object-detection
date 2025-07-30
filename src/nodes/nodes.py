@@ -70,8 +70,8 @@ training_project = sly.solution.ProjectNode(
 training_project_qa_stats = sly.solution.LinkNode(
     x=1000,
     y=1490,
-    title="Training Project QA Stats",
-    description="Explore the QA stats of the training project.",
+    title="QA & Stats",
+    description="Open the QA & Stats page to explore detailed insights into the training project.",
     tooltip_position="right",
     link=g.training_project.url.replace("datasets", "stats/datasets"),
 )

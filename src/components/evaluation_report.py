@@ -1,140 +1,94 @@
 from typing import Literal, Optional
 
 import supervisely as sly
-from supervisely.app.widgets import Icons, SolutionCard
-from supervisely.solution.base_node import SolutionCardNode, SolutionElement
+from supervisely._utils import abs_url, is_development
+from supervisely.app.content import DataJson
+from supervisely.app.widgets import Icons
+from supervisely.io.env import team_id as env_team_id
+from supervisely.solution.components.link_node import LinkNode
 
 
-class EvaluationReportNode(SolutionElement):
+class EvaluationReportNode(LinkNode):
     def __init__(
         self,
         api: sly.Api,
-        project_info: sly.ProjectInfo,
-        benchmark_dir: str,
-        title: str,
-        description: str,
+        team_id: Optional[int] = None,
+        benchmark_dir: Optional[str] = None,
+        title: Optional[str] = "Evaluation Report",
+        description: Optional[str] = None,
         width: int = 250,
         x: int = 0,
         y: int = 0,
-        icon: Optional[Icons] = None,
         tooltip_position: Literal["left", "right"] = "right",
         *args,
         **kwargs,
     ):
         """A node that displays a model evaluation report."""
         self.api = api
-        self.project = project_info
-        self.team_id = project_info.team_id
-        self.title = title
-        self.description = description
-        self.width = width
-        self.icon = icon
-        self.tooltip_position = tooltip_position
-
-        self.set_benchmark_dir(benchmark_dir)
-        self.card = self._create_card()
-        self.node = SolutionCardNode(content=self.card, x=x, y=y)
-        super().__init__(*args, **kwargs)
-
-    def _create_card(self) -> SolutionCard:
-        """
-        Creates and returns the SolutionCard.
-        """
-        return SolutionCard(
-            title=self.title,
-            tooltip=self._create_tooltip(),
-            width=self.width,
-            tooltip_position=self.tooltip_position,
-            link=self.url,
-            icon=self.icon,
+        self.team_id = team_id or env_team_id()
+        icon = Icons(class_name="zmdi zmdi-collection-text", color="#FF00A6", bg_color="#FFBCED")
+        super().__init__(
+            title=title,
+            description=description,
+            width=width,
+            x=x,
+            y=y,
+            icon=icon,
+            tooltip_position=tooltip_position,
+            *args,
+            **kwargs,
         )
+
+        if benchmark_dir is not None:
+            self.set_benchmark_dir(benchmark_dir or self.benchmark_dir)
 
     @property
     def benchmark_dir(self) -> str:
         """
         Returns the benchmark directory for the evaluation report.
         """
+        self._benchmark_dir = DataJson()[self.widget_id].get("benchmark_dir", None)
         return self._benchmark_dir
+
+    @benchmark_dir.setter
+    def benchmark_dir(self, benchmark_dir: str):
+        """
+        Sets the benchmark directory for the evaluation report.
+        """
+        self._benchmark_dir = benchmark_dir
+        DataJson()[self.widget_id]["benchmark_dir"] = benchmark_dir
+        DataJson().send_changes()
 
     def set_benchmark_dir(self, benchmark_dir: str):
         """
         Sets the benchmark directory for the evaluation report.
         """
         if not benchmark_dir:
-            self._benchmark_dir = None
+            self.benchmark_dir = None
             self.url = ""
             self.markdown_overview = None
-            if hasattr(self, "card"):
-                self.card.link = ""
+            self.card.link = ""
+            self.hide_new_report_badge()
             return
-        self._benchmark_dir = benchmark_dir
+
+        self.benchmark_dir = benchmark_dir
         lnk_path = f"{self._benchmark_dir.rstrip('/')}/visualizations/Model Evaluation Report.lnk"
         self.url = self._get_url_from_lnk_path(lnk_path)
         self.markdown_overview = self._get_overview_markdown()
-        if hasattr(self, "card"):
-            self.card.link = self.url
-
-    def _create_tooltip(self) -> SolutionCard.Tooltip:
-        """
-        Creates and returns the tooltip for the Manual Import widget.
-        """
-        # content = [Markdown(self.markdown_overview)] if self.markdown_overview else []
-        return SolutionCard.Tooltip(
-            description=self.description, properties=self._property_from_md()
-        )
+        self.card.link = self.url
+        self.show_new_report_badge()
 
     def _get_url_from_lnk_path(self, remote_lnk_path) -> str:
         if not remote_lnk_path:
             sly.logger.warning("Remote link path is empty.")
             return ""
-        if not self.api.file.exists(self.team_id, remote_lnk_path):
-            sly.logger.warning(
-                f"Link file {remote_lnk_path} does not exist in the benchmark directory."
-            )
+
+        file_info = self.api.storage.get_info_by_path(self.team_id, remote_lnk_path)
+        if not file_info:
+            sly.logger.warning(f"File info not found for path: {remote_lnk_path}")
             return ""
-
-        self.api.file.download(self.team_id, remote_lnk_path, "./model_evaluation_report.lnk")
-        with open("./model_evaluation_report.lnk", "r") as file:
-            base_url = file.read().strip()
-
-        sly.fs.silent_remove("./model_evaluation_report.lnk")
-
-        return sly.utils.abs_url(base_url)
-
-    # def _get_valid_benchmark_id(self, benchmark_id: int = None) -> int:
-    #     benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
-    #     benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
-    #     if not benchmarks:
-    #         sly.logger.warning("Project has no benchmark data.")
-    #         return None
-
-    #     for benchmark in benchmarks:
-    #         if benchmark_id is not None and benchmark.startswith(f"{benchmark_id}_"):
-    #             self.benchmark_dir = benchmark
-    #         template_path = benchmark + "template.vue"
-    #         if self.api.file.exists(self.team_id, template_path):
-    #             self.benchmark_dir = benchmark
-    #             return benchmark.split("_")[0]
-
-    #     return None
-
-    # def get_first_valid_benchmark(self) -> str:
-    #     """
-    #     Returns the first valid benchmark directory for the project.
-    #     """
-    #     benchmark_dir = f"/model-benchmark/{self.project.id}_{self.project.name}"
-    #     benchmarks = self.api.file.listdir(self.team_id, benchmark_dir)
-    #     if not benchmarks:
-    #         sly.logger.warning("Project has no benchmark data.")
-    #         return None
-
-    #     for benchmark in benchmarks:
-    #         template_path = f"{benchmark}/template.vue"
-    #         if self.api.file.exists(self.team_id, template_path):
-    #             return benchmark
-
-    #     sly.logger.warning("No valid benchmark found in the project.")
-    #     return None
+        report_path = f"/model-benchmark?id={file_info.id}"
+        return abs_url(report_path) if is_development() else report_path
 
     def _get_overview_markdown(self) -> str:
         """
@@ -198,3 +152,11 @@ class EvaluationReportNode(SolutionElement):
                 properties.append({"key": key, "value": value, "link": False, "highlight": False})
 
         return properties
+
+    def show_new_report_badge(self):
+        """Shows a badge indicating that a new evaluation report is available."""
+        self.card.update_badge_by_key(key="📋", label="New report", badge_type="success")
+
+    def hide_new_report_badge(self):
+        """Hides the new report badge."""
+        self.card.remove_badge_by_key("📋")

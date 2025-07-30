@@ -119,6 +119,15 @@ n.experiments.redeploy_settings.load_settings()
 def _on_start_btn_click():
     # set best model
     sly.logger.info("DEBUG: using dummy models for comparison")
+    try:
+        n.experiments.evaluation_report.hide_new_report_badge()
+        n.experiments.evaluation_report.node.disable()
+        n.rt_detr.eval_report_after_training.hide_new_report_badge()
+        n.rt_detr.eval_report_after_training.node.disable()
+        n.experiments.comparison_report.hide_new_report_badge()
+        n.experiments.comparison_report.node.disable()
+    except Exception as e:
+        sly.logger.warning(f"Failed to hide new report badges: {e}")
     model_path_1 = "/experiments/2786_SOLUTION2 (training)/48699_RT-DETRv2/checkpoints/best.pth"
     task_id_1 = int(model_path_1.split("/")[-3].split("_")[0])
 

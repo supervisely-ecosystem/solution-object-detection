@@ -3,6 +3,7 @@ import supervisely as sly
 import src.sly_globals as g
 from src.components.automation_tasks import AutomationTasksNode
 from src.components.definitions import DefinitionsNode
+from src.components.empty import EmptyNode
 from src.components.task_logs import TaskLogsNode
 
 automation_tasks = AutomationTasksNode(x=20, y=30)
@@ -85,18 +86,22 @@ versioning = sly.solution.LinkNode(
     link=g.training_project.url.replace("datasets", "versions"),
 )
 
-ai_search = sly.solution.LinkNode(
-    x=886,
+ai_index = EmptyNode(
+    x=630,
     y=205,
-    title="AI Search",
-    description="AI Search Service allows you to search for similar images in the dataset using AI models.",
-    width=180,
+    title="AI Index",
+    description="AI Search Index is a powerful tool that allows you to search for images in your dataset using AI models. It provides a quick and efficient way to find similar images based on visual features. You can use it in Smart Sampling node to select images for labeling based on speciied prompt.",
+    width=150,
+    badge=sly.app.widgets.SolutionCard.Badge(label="⚡", on_hover="On", plain=True),
+    icon=sly.app.widgets.Icons(class_name="zmdi zmdi-apps", color="#4CAF50", bg_color="#E8F5E9"),
 )
 
-ai_search_clip = sly.solution.LinkNode(
-    x=1100,
+open_ai_clip = EmptyNode(
+    x=400,
     y=205,
-    title="CLIP Service",
-    description="CLIP Service creates vectors for images and converts prompts to vectors for AI search.",
-    link=sly.utils.abs_url("/ecosystem/apps/deploy-clip-as-service"),
+    title="OpenAI CLIP",
+    description="OpenAI CLIP is a powerful model that can be used to generate embeddings for images in your project. These embeddings can be used for various tasks, such as image similarity search, prompt-based image retrieval. In this application, it is used to create an index and search images based on text prompts or clusters.",
+    width=150,
+    badge=sly.app.widgets.SolutionCard.Badge(label="⚡", on_hover="On", plain=True),
+    icon=sly.app.widgets.Icons(class_name="zmdi zmdi-apps", color="#4CAF50", bg_color="#E8F5E9"),
 )

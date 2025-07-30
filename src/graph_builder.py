@@ -1,6 +1,5 @@
-import supervisely as sly
-
 import src.nodes as n
+import supervisely as sly
 
 # * Create a SolutionGraphBuilder instance
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px", width="3000px")
@@ -15,8 +14,8 @@ graph_builder.add_node(n.definitions)
 graph_builder.add_node(n.cloud_import)
 graph_builder.add_node(n.auto_import)
 graph_builder.add_node(n.input_project)
-graph_builder.add_node(n.ai_search)
-graph_builder.add_node(n.ai_search_clip)
+graph_builder.add_node(n.ai_index)
+graph_builder.add_node(n.open_ai_clip)
 graph_builder.add_node(n.sampling)
 
 # labeling nodes
@@ -62,23 +61,23 @@ graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
 graph_builder.add_edge(n.auto_import, n.input_project, path="grid")
 graph_builder.add_edge(n.input_project, n.sampling)
 graph_builder.add_edge(
+    n.ai_index,
     n.input_project,
-    n.ai_search,
     dash=True,
     start_socket="right",
     end_socket="left",
     end_plug="behind",
 )
 graph_builder.add_edge(
-    n.ai_search,
-    n.ai_search_clip,
+    n.open_ai_clip,
+    n.ai_index,
     dash=True,
     start_socket="right",
     end_socket="left",
     end_plug="behind",
 )
 graph_builder.add_edge(
-    n.ai_search, n.sampling, dash=True, start_socket="bottom", end_socket="right", path="grid"
+    n.ai_index, n.sampling, dash=True, start_socket="bottom", end_socket="left", path="grid"
 )
 graph_builder.add_edge(n.sampling, n.labeling_project_node)
 graph_builder.add_edge(n.labeling_project_node, n.queue)

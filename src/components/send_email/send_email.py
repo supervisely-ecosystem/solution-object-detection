@@ -14,6 +14,7 @@ from supervisely.app.widgets import (
     TextArea,
     Widget,
 )
+from supervisely.sly_logger import logger
 
 SMTP_PROVIDERS = {
     "gmail.com": ("smtp.gmail.com", 587),
@@ -244,8 +245,6 @@ class SendEmail(Widget):
             # raise ValueError("Username and password must be provided in credentials.")
 
         from email.message import EmailMessage
-
-        from supervisely import logger
 
         msg = EmailMessage()
         msg["Subject"] = self.get_subject() or self._default_subject

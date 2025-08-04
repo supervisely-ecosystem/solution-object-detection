@@ -158,7 +158,7 @@ class PreLabelingGUI(Widget):
             "enabled": self.enable_switch.is_switched(),
             "processed_images": self.get_processed_images(),
             "last_processed_images": self.get_last_processed_images(),
-            "predict_app_task_id": self.predict_app_task_id,
+            "predict_app_task_id": self._predict_app_task_id,
         }
 
     def get_json_state(self) -> dict:
@@ -258,10 +258,18 @@ class PreLabelingGUI(Widget):
         if not images:
             logger.warning("No images to update in preview gallery.")
             return
+        
+        if not self.model:
+            logger.warning("No model connected. Cannot update preview gallery.")
+            return
+        
+        if not self.model.is_deployed():
+            logger.warning("Model is not deployed. Cannot update preview gallery.")
+            return
 
-        # Limit to last 9 images for preview
-        if len(images) > 9:
-            images = images[-9:]
+        # Limit to last 3 images for preview
+        if len(images) > 3:
+            images = images[-3:]
 
         image_infos = self.api.image.get_info_by_id_batch(images)
         urls_map = {img.id: img.full_storage_url for img in image_infos}

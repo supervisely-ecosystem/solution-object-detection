@@ -12,3 +12,4 @@ from .definitions import DefinitionsNode
 from .all_experiments import AllExperimentsNode
 from .api_inference import ApiInferenceNode
 from .empty import EmptyNode
+from .pre_labeling.node import PreLabelingNode

@@ -18,10 +18,12 @@ graph_builder.add_node(n.ai_index)
 graph_builder.add_node(n.open_ai_clip)
 graph_builder.add_node(n.sampling)
 
+
 # labeling nodes
 graph_builder.add_node(n.labeling_project_node)
 graph_builder.add_node(n.queue)
 graph_builder.add_node(n.labeling_performance)
+graph_builder.add_node(n.pre_labeling)
 
 # EXPERIMENT NODES:
 # - training preparation nodes
@@ -80,6 +82,21 @@ graph_builder.add_edge(
     n.ai_index, n.sampling, dash=True, start_socket="bottom", end_socket="left", path="grid"
 )
 graph_builder.add_edge(n.sampling, n.labeling_project_node)
+graph_builder.add_edge(
+    n.sampling,
+    n.pre_labeling,
+    start_socket="right",
+    path="grid",
+    dash=True,
+    label="if custom model is deployed",
+)
+graph_builder.add_edge(
+    n.pre_labeling,
+    n.labeling_project_node,
+    start_socket="left",
+    path="grid",
+    dash=True,
+)
 graph_builder.add_edge(n.labeling_project_node, n.queue)
 graph_builder.add_edge(n.queue, n.splits)
 graph_builder.add_edge(
@@ -204,6 +221,13 @@ graph_builder.add_edge(
     n.experiments.api_inference_node,
     end_socket="left",
     path="grid",
+)
+graph_builder.add_edge(
+    n.experiments.deploy_custom_model_node,
+    n.pre_labeling,
+    start_socket="left",
+    end_socket="right",
+    dash=True,
 )
 
 # * Build the layout

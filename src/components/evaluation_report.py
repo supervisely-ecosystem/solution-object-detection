@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from typing import Literal, Optional
 
 import supervisely as sly
@@ -5,6 +7,7 @@ from supervisely._utils import abs_url, is_development
 from supervisely.app.content import DataJson
 from supervisely.app.widgets import Icons
 from supervisely.io.env import team_id as env_team_id
+from supervisely.io.fs import silent_remove
 from supervisely.solution.components.link_node import LinkNode
 
 
@@ -87,7 +90,24 @@ class EvaluationReportNode(LinkNode):
         if not file_info:
             sly.logger.warning(f"File info not found for path: {remote_lnk_path}")
             return ""
-        report_path = f"/model-benchmark?id={file_info.id}"
+        temp_file = tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".lnk")
+        try:
+            self.api.storage.download(self.team_id, remote_lnk_path, temp_file.name)
+            with open(temp_file.name, "r") as f:
+                line = f.readline()
+                if not line.startswith("/model-benchmark?id="):
+                    raise ValueError(f"Unexpected content in the file: {line}")
+                report_path = line.strip()
+        except Exception as e:
+            sly.logger.error(f"Failed to read the link file: {e}")
+            sly.logger.info("Trying to find the report path in Team Files...")
+            report_path = remote_lnk_path.replace("Model Evaluation Report.lnk", "template.vue")
+            report_info = self.api.storage.get_info_by_path(self.team_id, report_path)
+            if not report_info:
+                sly.logger.error(f"Report path not found in Team Files: {report_path}")
+                return ""
+        finally:
+            silent_remove(temp_file.name)
         return abs_url(report_path) if is_development() else report_path
 
     def _get_overview_markdown(self) -> str:

@@ -65,7 +65,7 @@ comparison_report = EvaluationReportNode(
 comparison_report.node.disable()
 
 redeploy_settings = RedeploySettingsNode(x=2000, y=2300)
-deploy_custom_model_node = DeployCustomModel(x=1200, y=470, api=g.api)
+deploy_custom_model_node = DeployCustomModel(x=1800, y=470, api=g.api)
 api_inference_node = ApiInferenceNode(
     "src/assets/api_inference.md",
     x=2200,

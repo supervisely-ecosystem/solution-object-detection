@@ -1,3 +1,4 @@
+from time import sleep
 from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 from supervisely.api.api import Api
@@ -46,31 +47,34 @@ class DeployTasksAutomation(Automation):
             self.scheduler.remove_job(job_id)
 
 
-class DeployTasksHistory(SolutionTasksHistory):
-    def __init__(self, api: Api, title: str = "Tasks History"):
-        super().__init__(api, title)
-        self.tasks_history.table_columns = [
+class DeployTasksHistory(TasksHistory):
+    def __init__(self, api: Api):
+        super().__init__(api)
+        self.table_columns = [
             "Task ID",
             "App Name",
             "Model Name",
             "Started At",
             # "Classses Count",
-            "Status",
             "Runtime",
             "Hardware",
             "Device",
         ]
-        self.tasks_history.columns_keys = [
-            ["task_info", "id"],
-            ["task_info", "meta", "app", "name"],
-            ["deploy_info", "model_name"],
-            ["task_info", "created_at"],
+        self.columns_keys = [
+            ["id"],
+            ["app_name"],
+            ["model_name"],
+            ["started_at"],
             # ["meta", "model", "classes_count"],
-            ["status"],
-            ["deploy_info", "runtime"],
-            ["deploy_info", "hardware"],
-            ["deploy_info", "device"],
+            ["runtime"],
+            ["hardware"],
+            ["device"],
         ]
+
+    def update(self):
+        self.table.clear()
+        for row in self._get_table_data():
+            self.table.insert_row(row)
 
 
 class BaseDeployGUI(Widget):
@@ -154,7 +158,7 @@ class BaseDeployGUI(Widget):
     @property
     def agent_selector(self) -> AgentSelector:
         if not hasattr(self, "_agent_selector"):
-            self._agent_selector = AgentSelector(self.team_id)
+            self._agent_selector = AgentSelector(self.team_id, show_only_gpu=True)
         return self._agent_selector
 
     @property
@@ -299,6 +303,7 @@ class BaseDeployNode(SolutionElement):
 
         self.api = api
         self.tasks_history = DeployTasksHistory(self.api)
+        self.tasks_modal = Dialog(title=title, content=self.tasks_history)
         self.automation = DeployTasksAutomation()
         self.main_widget = self.gui_class(api=api, team_id=env_team_id())
         self.automation.apply(self.refresh_memory_usage_info, self.automation.REFRESH_GPU_USAGE)
@@ -306,9 +311,7 @@ class BaseDeployNode(SolutionElement):
         @self.main_widget.deploy_button.click
         def _on_deploy_button_click():
             self.settings_modal.hide()
-            self.card.loading = True
             self.deploy(model=self.main_widget.model_name_input.get_value())
-            self.card.loading = False
 
         @self.main_widget.stop_button.click
         def _on_stop_button_click():
@@ -330,7 +333,7 @@ class BaseDeployNode(SolutionElement):
         self.card = self._create_card()
         self.node = SolutionCardNode(content=self.card, x=x, y=y)
         self.modals = [
-            self.tasks_history.tasks_modal,
+            self.tasks_modal,
             self.tasks_history.logs_modal,
             self.settings_modal,
         ]
@@ -374,8 +377,8 @@ class BaseDeployNode(SolutionElement):
 
         @btn.click
         def _show_tasks_dialog():
-            self.tasks_history.tasks_history.update()
-            self.tasks_history.tasks_modal.show()
+            self.tasks_history.update()
+            self.tasks_modal.show()
 
         return btn
 
@@ -422,13 +425,23 @@ class BaseDeployNode(SolutionElement):
         Deploys the model using the main widget's deploy method.
         """
         try:
+            self.node.show_in_progress_badge("Deploying model...")
             self.main_widget.deploy(model=model, agent_id=agent_id)
             if self.main_widget.model is not None:
                 self.session_link = self.main_widget.model.url
+            sleep(10)  # Wait for the model to be fully deployed
             task_info, deploy_info = self._get_deployed_model_info()
-            self.tasks_history.add_task({"task_info": task_info, "deploy_info": deploy_info})
-
             self._update_properties(deploy_info)
+            task_data = {
+                "id": task_info.get("id"),
+                "app_name": task_info.get("meta", {}).get("app", {}).get("name"),
+                "model_name": deploy_info.get("model_name"),
+                "started_at": task_info.get("startedAt"),
+                "runtime": deploy_info.get("runtime"),
+                "hardware": deploy_info.get("hardware"),
+                "device": deploy_info.get("device"),
+            }
+            self.tasks_history.add_task(task_data)
             return self.main_widget.model.task_id
         except Exception as e:
             show_dialog(
@@ -437,13 +450,15 @@ class BaseDeployNode(SolutionElement):
                 status="error",
             )
             self.session_link = ""
+        finally:
+            self.node.hide_in_progress_badge("Deploying model...")
 
-    def _get_deployed_model_info(self) -> Tuple[Optional[Dict], Optional[Dict]]:
+    def _get_deployed_model_info(self) -> Tuple[Dict, Dict]:
         """
         Returns the deployment information.
         """
         if self.main_widget.model is None:
-            return None, None
+            return {}, {}
         task_info = self.api.task.get_info_by_id(self.main_widget.model.task_id)
         deploy_info = self.main_widget.model.get_info()
         return task_info, deploy_info
@@ -500,9 +515,9 @@ class BaseDeployNode(SolutionElement):
         if self.main_widget.model is not None:
             self.refresh_memory_usage_info()
             deploy_info = deploy_info or self._get_deployed_model_info()[1]
-            self.card.update_property("Source", deploy_info["model_source"])
-            self.card.update_property("Hardware", deploy_info["hardware"])
-            self.card.update_property("Model", deploy_info["model_name"], False, True)
+            self.card.update_property("Source", deploy_info.get("model_source"))
+            self.card.update_property("Hardware", deploy_info.get("hardware"))
+            self.card.update_property("Model", deploy_info.get("model_name"), False, True)
             self.node.show_automation_badge()
             self.card.update_property("Status", "Model deployed", highlight=True)
         else:
@@ -511,3 +526,19 @@ class BaseDeployNode(SolutionElement):
             self.card.remove_property_by_key("Source")
             self.card.remove_property_by_key("Hardware")
             self.card.remove_property_by_key("Model")
+
+    def is_deployed(self) -> bool:
+        """
+        Checks if the model is currently deployed.
+        """
+        return self.main_widget.model is not None and self.main_widget.model.is_deployed()
+
+    @property
+    def session_id(self) -> Optional[int]:
+        """
+        Returns the session ID of the deployed model.
+        If the model is not deployed, returns None.
+        """
+        if self.main_widget.model is not None:
+            return self.main_widget.model.task_id
+        return None

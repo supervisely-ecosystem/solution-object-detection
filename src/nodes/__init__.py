@@ -12,6 +12,7 @@ from src.nodes.nodes import (
     labeling_project_node,
     move_labeled,
     open_ai_clip,
+    pre_labeling,
     queue,
     sampling,
     splits,

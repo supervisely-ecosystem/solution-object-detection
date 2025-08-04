@@ -56,13 +56,16 @@ def _on_sampling_finish(res):
         sly.logger.error("Sampling was not finished successfully.")
         return
     src, dst, images_count = res
-    n.labeling_project_node.update(new_items_count=images_count)
-    n.sampling.update_sampling_widgets()
-
     images = []
     for imgs in dst.values():
         images.extend(imgs)
     g.api.entities_collection.add_items(g.labeling_collection.id, images)
+    if n.pre_labeling.is_enabled() and n.experiments.deploy_custom_model_node.is_deployed():
+        n.pre_labeling.set_deployed_model(n.experiments.deploy_custom_model_node.session_id)
+        n.pre_labeling.run(images=images)
+        # n.pre_labeling.run_async(images=images)
+    n.labeling_project_node.update(new_items_count=images_count)
+    n.sampling.update_sampling_widgets()
     n.queue.refresh_info()
     n.splits.set_items_count(images_count)
 

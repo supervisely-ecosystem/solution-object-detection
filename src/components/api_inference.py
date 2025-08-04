@@ -86,9 +86,9 @@ class ApiInferenceNode(MarkdownNode):
         self.content = open(markdown_path, "r", encoding="utf-8").read()
         super().__init__(
             content=self.content,
-            title="API Inference",
+            title="Inference API endpoints",
             description="Documentation on how to interact with the deployed model using Supervisely API.",
-            width=200,
+            width=250,
             x=x,
             y=y,
             icon=Icons("zmdi zmdi-code", color="#1976D2", bg_color="#E3F2FD"),

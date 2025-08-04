@@ -3,6 +3,7 @@ import supervisely as sly
 from src.components.automation_tasks import AutomationTasksNode
 from src.components.definitions import DefinitionsNode
 from src.components.empty import EmptyNode
+from src.components.pre_labeling.node import PreLabelingNode
 from src.components.task_logs import TaskLogsNode
 
 automation_tasks = AutomationTasksNode(x=20, y=30)
@@ -93,6 +94,7 @@ ai_index = EmptyNode(
     width=150,
     badge=sly.app.widgets.SolutionCard.Badge(label="⚡", on_hover="On", plain=True),
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-apps", color="#4CAF50", bg_color="#E8F5E9"),
+    tooltip_position="left",
 )
 
 open_ai_clip = EmptyNode(
@@ -103,4 +105,7 @@ open_ai_clip = EmptyNode(
     width=150,
     badge=sly.app.widgets.SolutionCard.Badge(label="⚡", on_hover="On", plain=True),
     icon=sly.app.widgets.Icons(class_name="zmdi zmdi-apps", color="#4CAF50", bg_color="#E8F5E9"),
+    tooltip_position="left",
 )
+
+pre_labeling = PreLabelingNode(api=g.api, x=1400, y=470)

@@ -68,7 +68,17 @@ class PreLabelingGUI(Widget):
     @property
     def predict_app_task_id(self) -> Optional[int]:
         """Get the current predict app session."""
+        self._predict_app_task_id = DataJson()[self.widget_id]["predict_app_task_id"]
         return self._predict_app_task_id
+
+    @predict_app_task_id.setter
+    def predict_app_task_id(self, task_id: int):
+        """Set the predict app session task ID."""
+        if not isinstance(task_id, int):
+            raise ValueError("Task ID must be an integer.")
+        self._predict_app_task_id = task_id
+        DataJson()[self.widget_id]["predict_app_task_id"] = task_id
+        DataJson().send_changes()
 
     @property
     def model(self) -> Optional[ModelAPI]:
@@ -78,6 +88,7 @@ class PreLabelingGUI(Widget):
         if not hasattr(self, "_model") or self._model is None:
             self._model = self.api.nn.connect(self._session_id)
         if self._model.task_id != self._session_id:
+            self._model.shutdown()
             self._model = self.api.nn.connect(self._session_id)
         return self._model
 
@@ -147,6 +158,7 @@ class PreLabelingGUI(Widget):
             "enabled": self.enable_switch.is_switched(),
             "processed_images": self.get_processed_images(),
             "last_processed_images": self.get_last_processed_images(),
+            "predict_app_task_id": self.predict_app_task_id,
         }
 
     def get_json_state(self) -> dict:
@@ -208,35 +220,20 @@ class PreLabelingGUI(Widget):
         if self._model is None:
             self._model = self.api.nn.connect(session_id)
         elif self._model.task_id != session_id:
-            self.model.shutdown()
+            self._model.shutdown()
+            self._model = self.api.nn.connect(session_id)
         elif not self._model.is_deployed():
             self._model = self.api.nn.connect(session_id)
 
-        if self.enable_switch.is_switched():
-            self._ensure_predict_app_session()
-        #     self._load_model_in_predict_app(session_id)
+        # if self.enable_switch.is_switched():
+        #     self._run_predict_app()
 
-    # def _load_model_in_predict_app(self, session_id: int):
-    #     try:
-    #         self.api.task.send_request(
-    #             task_id=self.predict_app_task_id,
-    #             data={"model": {"mode": "connect", "session_id": session_id}},
-    #             method="load",
-    #         )
-    #     except Exception as e:
-    #         logger.error(f"Failed to load model in predict app: {repr(e)}")
-    #         self.enable_switch.off()
-    #         self._predict_app_task_id = None
-    #         DataJson()[self.widget_id]["predict_app_task_id"] = None
-    #         DataJson().send_changes()
-
-    def _ensure_predict_app_session(self):
+    def _run_predict_app(self):
         """Ensure that the predict app session is set."""
         try:
-            if self._predict_app_task_id:
-                if not self.api.task.is_running(self._predict_app_task_id):
-                    self._predict_app_task_id = None
-            if self._predict_app_task_id is None:
+            if self.predict_app_task_id and not self.api.task.is_running(self.predict_app_task_id):
+                self.predict_app_task_id = None
+            if self.predict_app_task_id is None:
                 module_id = self.api.app.get_ecosystem_module_id(self.PREDICT_APP_SLUG)
                 agent_id = self.api.nn._deploy_api._find_agent(self.team_id)
                 session_info = self.api.app.start(
@@ -244,16 +241,15 @@ class PreLabelingGUI(Widget):
                     workspace_id=self.workspace_id,
                     agent_id=agent_id,
                 )
+
                 self.api.app.wait_until_ready_for_api_calls(
                     session_info.task_id, attempts=25, attempt_delay_sec=5
                 )
-                self._predict_app_task_id = session_info.task_id
+                self.predict_app_task_id = session_info.task_id
         except Exception as e:
             logger.error(f"Failed to prepare predict app session: {repr(e)}")
-            self._predict_app_task_id = None
+            self.predict_app_task_id = None
             self.enable_switch.off()
-        DataJson()[self.widget_id]["predict_app_task_id"] = self._predict_app_task_id
-        DataJson().send_changes()
 
     def update_preview_gallery(self, images: List[int]):
         """Update preview gallery with new images."""
@@ -292,9 +288,7 @@ class PreLabelingGUI(Widget):
                 self.set_model_session_id(model_session_id)
 
             if task_id:
-                self._predict_app_task_id = task_id
-                DataJson()[self.widget_id]["predict_app_task_id"] = task_id
-                DataJson().send_changes()
+                self.predict_app_task_id = task_id
 
             if self._session_id is None:
                 raise ValueError("No model session ID set. Please set a valid session ID.")
@@ -304,6 +298,8 @@ class PreLabelingGUI(Widget):
 
             if not images:
                 raise ValueError("No images provided for pre-labeling.")
+
+            self._run_predict_app()
 
             # Process images with the model
             data = {
@@ -323,7 +319,9 @@ class PreLabelingGUI(Widget):
             if iou_merge_threshold is not None:
                 data["output"]["iou_merge_threshold"] = iou_merge_threshold
             logger.info(f"Running pre-labeling on {len(images)} images with settings: {data}")
-            res = self.api.task.send_request(task_id=self.predict_app_task_id, data=data, method="predict")
+            res = self.api.task.send_request(
+                task_id=self.predict_app_task_id, data=data, method="predict", retries=1, timeout=30
+            )
             if not res:
                 logger.error("Pre-labeling failed or was skipped.")
                 self._result = None
@@ -337,6 +335,14 @@ class PreLabelingGUI(Widget):
                 self._processed_images.extend(processed_images)
                 self._last_processed_images = processed_images
                 self.add_processed_images(processed_images)
+
         except Exception as e:
             logger.error(f"Failed to run pre-labeling: {repr(e)}")
             return
+        finally:
+            if self.predict_app_task_id:
+                try:
+                    self.api.task.stop(self.predict_app_task_id)
+                    self.predict_app_task_id = None
+                except Exception as e:
+                    logger.error(f"Failed to stop predict app session: {repr(e)}")

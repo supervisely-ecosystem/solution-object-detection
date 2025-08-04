@@ -61,7 +61,6 @@ def _on_sampling_finish(res):
         images.extend(imgs)
     g.api.entities_collection.add_items(g.labeling_collection.id, images)
     if n.pre_labeling.is_enabled() and n.experiments.deploy_custom_model_node.is_deployed():
-        n.pre_labeling.set_deployed_model(n.experiments.deploy_custom_model_node.session_id)
         n.pre_labeling.run(images=images)
         # n.pre_labeling.run_async(images=images)
     n.labeling_project_node.update(new_items_count=images_count)
@@ -100,6 +99,11 @@ def _on_move_labeled_pull_btn_click():
 def _on_move_labeled_automation_btn_click():
     n.move_labeled.automation_modal.hide()
     n.move_labeled.apply_automation(_move_labeled_images)
+
+@n.experiments.deploy_custom_model_node.on_deploy
+def on_model_deployed(deployed_task_id: int):
+    n.experiments.api_inference_node.set_task_id(deployed_task_id)
+    n.pre_labeling.set_deployed_model(deployed_task_id)
 
 
 # # * Restore data and state if available

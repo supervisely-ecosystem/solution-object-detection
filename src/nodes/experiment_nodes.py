@@ -102,10 +102,7 @@ def on_compare_finished(res_dir, res_link) -> None:
 
     if redeploy_settings.is_enabled() and compare_node.is_new_model_better(primary_metric="mAP"):
         agent_id = redeploy_settings.get_agent_id()
-        deployed_task_id = deploy_custom_model_node.deploy(
-            model=compare_node.result_best_checkpoint, agent_id=agent_id
-        )
-        api_inference_node.set_task_id(deployed_task_id)
+        deploy_custom_model_node.deploy(compare_node.result_best_checkpoint, agent_id)
 
 
 @rt_detr.train_node.on_train_started

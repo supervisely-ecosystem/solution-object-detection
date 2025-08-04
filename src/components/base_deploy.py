@@ -307,6 +307,7 @@ class BaseDeployNode(SolutionElement):
         self.automation = DeployTasksAutomation()
         self.main_widget = self.gui_class(api=api, team_id=env_team_id())
         self.automation.apply(self.refresh_memory_usage_info, self.automation.REFRESH_GPU_USAGE)
+        self._on_deploy_callbacks = []
 
         @self.main_widget.deploy_button.click
         def _on_deploy_button_click():
@@ -442,6 +443,13 @@ class BaseDeployNode(SolutionElement):
                 "device": deploy_info.get("device"),
             }
             self.tasks_history.add_task(task_data)
+
+            for callback in self._on_deploy_callbacks:
+                try:
+                    callback(self.main_widget.model.task_id)
+                except Exception as e:
+                    logger.warning(f"Error in deploy callback: {e}")
+
             return self.main_widget.model.task_id
         except Exception as e:
             show_dialog(
@@ -542,3 +550,12 @@ class BaseDeployNode(SolutionElement):
         if self.main_widget.model is not None:
             return self.main_widget.model.task_id
         return None
+
+    def on_deploy(self, fn: Callable) -> None:
+        """
+        Decorator to register a callback function that will be called after the model is deployed.
+        """
+        if not callable(fn):
+            raise ValueError("Callback must be a callable function.")
+        self._on_deploy_callbacks.append(fn)
+        return fn

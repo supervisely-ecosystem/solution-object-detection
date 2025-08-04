@@ -386,13 +386,18 @@ class CompareNode(SolutionElement):
             )
             return ""
 
-        self.api.file.download(self.team_id, remote_lnk_path, "./model_evaluation_report.lnk")
-        with open("./model_evaluation_report.lnk", "r") as file:
-            base_url = file.read().strip()
-
-        silent_remove("./model_evaluation_report.lnk")
-
-        return base_url
+        temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".lnk", delete=False)
+        try:
+            self.api.file.download(self.team_id, remote_lnk_path, temp_file.name)
+            with open(temp_file.name, "r") as file:
+                base_url = file.read().strip()
+            return base_url
+        except Exception as e:
+            logger.error(f"Failed to read the link file: {e}")
+            return ""
+        finally:
+            if os.path.exists(temp_file.name):
+                silent_remove(temp_file.name)
 
     def _update_properties(self, enable: bool):
         """Update node properties with current settings."""

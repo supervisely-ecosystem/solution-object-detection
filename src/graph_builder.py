@@ -89,6 +89,7 @@ graph_builder.add_edge(
     path="grid",
     dash=True,
     label="if custom model is deployed",
+    label_offset=-50,
 )
 graph_builder.add_edge(
     n.pre_labeling,

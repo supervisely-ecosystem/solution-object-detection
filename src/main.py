@@ -152,7 +152,7 @@ def _on_start_btn_click():
     n.rt_detr.eval_report_after_training.node.enable()
 
     # * Add evaluation report directory to the compare node
-    n.experiments.compare_node.evaluation_dirs = [report_eval_dir_1]
+    n.experiments.compare_node.best_eval_dir = report_eval_dir_1
 
     # * This is the second model (assuming it is just from training session)
     model_path_2 = "/experiments/2786_SOLUTION2 (training)/48698_RT-DETRv2/checkpoints/best.pth"
@@ -163,7 +163,7 @@ def _on_start_btn_click():
     report_eval_dir_2 = f._get_eval_dir_from_task_info(g.api, task_info_2)
 
     # * Add second evaluation report directory to the compare node
-    n.experiments.compare_node.evaluation_dirs.append(report_eval_dir_2)
+    n.experiments.compare_node.new_eval_dir = report_eval_dir_2
 
     # * Run the comparison (if new model is better, it will be automatically re-deployed and email will be sent)
     n.experiments.compare_node.run()

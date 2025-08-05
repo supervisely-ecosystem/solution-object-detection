@@ -48,10 +48,6 @@ compare_node = CompareNode(
     y=2300,
     tooltip_position="left",
 )
-# compare_node.evaluation_dirs = [
-#     "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
-#     "/model-benchmark/73_sample COCO/7958_Train YOLO v8 - v12/",
-# ]
 
 send_email = SendEmailNode(width=200, x=1700, y=2400)
 
@@ -87,7 +83,7 @@ def on_re_eval_started():
 def on_re_eval_finished(res_dir) -> None:
     evaluation_report.set_benchmark_dir(res_dir)
     evaluation_report.node.enable()
-    compare_node.evaluation_dirs.append(res_dir)
+    compare_node.best_eval_dir = res_dir
     comparison_report.hide_new_report_badge()
     comparison_report.node.disable()
     compare_node.run()
@@ -155,9 +151,6 @@ def _on_train_rt_detr_finished(task_id: int):
         sly.logger.error(f"Evaluation directory for task {task_id} not found.")
         return
 
-    # * Clear previous evaluation directories
-    compare_node.evaluation_dirs = []
-
     # * Update evaluation report after training
     rt_detr.eval_report_after_training.set_benchmark_dir(report_eval_dir)
     rt_detr.eval_report_after_training.node.enable()
@@ -167,7 +160,7 @@ def _on_train_rt_detr_finished(task_id: int):
         re_eval.set_model_path(experiments.best_model)
         re_eval.run()
         # * Add evaluation report directory to the compare node
-        compare_node.evaluation_dirs.append(report_eval_dir)
+        compare_node.new_eval_dir = report_eval_dir
     elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)
@@ -207,9 +200,6 @@ def _on_train_yolo_finished(task_id: int):
         sly.logger.error(f"Evaluation directory for task {task_id} not found.")
         return
 
-    # * Clear previous evaluation directories
-    compare_node.evaluation_dirs = []
-
     # * Update evaluation report after training
     yolo.eval_report_after_training.set_benchmark_dir(report_eval_dir)
     yolo.eval_report_after_training.node.enable()
@@ -220,7 +210,7 @@ def _on_train_yolo_finished(task_id: int):
         re_eval.run()
 
         # * Add evaluation report directory to the compare node
-        compare_node.evaluation_dirs.append(report_eval_dir)
+        compare_node.new_eval_dir = report_eval_dir
     elif model_path := f._get_best_model_from_task_info(task_info):
         # * Set best model from task info if not set yet
         experiments.set_best_model(model_path)

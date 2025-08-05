@@ -9,6 +9,8 @@ node_modules/
 debug/
 supervisely/
 supervisely
-./static/
+static/
 
 email_creds.env
+
+src/table_dev/

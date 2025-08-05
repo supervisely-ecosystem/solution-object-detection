@@ -72,10 +72,8 @@ class PreLabelingGUI(Widget):
         return self._predict_app_task_id
 
     @predict_app_task_id.setter
-    def predict_app_task_id(self, task_id: int):
+    def predict_app_task_id(self, task_id: Union[int, None]):
         """Set the predict app session task ID."""
-        if not isinstance(task_id, int):
-            raise ValueError("Task ID must be an integer.")
         self._predict_app_task_id = task_id
         DataJson()[self.widget_id]["predict_app_task_id"] = task_id
         DataJson().send_changes()

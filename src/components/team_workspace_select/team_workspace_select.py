@@ -2,11 +2,12 @@ from typing import Literal, Optional
 
 from supervisely import env
 from supervisely.api.api import Api
-from supervisely.app import widgets as w
 from supervisely.app.content import DataJson, StateJson
+from supervisely.app.widgets import Container, Empty, Select, Text
+from supervisely.app.widgets.widget import Widget
 
 
-class TeamWorkspaceSelect(w.Widget):
+class TeamWorkspaceSelect(Widget):
     class Routes:
         VALUE_CHANGED = "value_changed"
 
@@ -34,7 +35,7 @@ class TeamWorkspaceSelect(w.Widget):
 
     @property
     def _content(self):
-        return w.Container(
+        return Container(
             [
                 self.team_label,
                 self.team_selector,
@@ -49,8 +50,8 @@ class TeamWorkspaceSelect(w.Widget):
     @property
     def team_selector(self):
         if not hasattr(self, "_team_selector"):
-            items = [w.Select.Item(team.id, team.name) for team in self._api.team.get_list()]
-            select = w.Select(items=items, size=self._size)
+            items = [Select.Item(team.id, team.name) for team in self._api.team.get_list()]
+            select = Select(items=items, size=self._size)
 
             @select.value_changed
             def on_team_change(value: int):
@@ -64,9 +65,9 @@ class TeamWorkspaceSelect(w.Widget):
     def workspace_selector(self):
         if not hasattr(self, "_workspace_selector"):
             items = [
-                w.Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)
+                Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)
             ]
-            select = w.Select(items=items, size=self._size)
+            select = Select(items=items, size=self._size)
 
             @select.value_changed
             def on_workspace_change(value: int):
@@ -87,18 +88,18 @@ class TeamWorkspaceSelect(w.Widget):
     def team_label(self):
         if not hasattr(self, "_team_label"):
             if self._show_label:
-                self._team_label = w.Text(text="Team")
+                self._team_label = Text(text="Team")
             else:
-                self._team_label = w.Empty()
+                self._team_label = Empty()
         return self._team_label
 
     @property
     def workspace_label(self):
         if not hasattr(self, "_workspace_label"):
             if self._show_label:
-                self._workspace_label = w.Text(text="Workspace")
+                self._workspace_label = Text(text="Workspace")
             else:
-                self._workspace_label = w.Empty()
+                self._workspace_label = Empty()
         return self._workspace_label
 
     def get_selected_team_id(self) -> Optional[int]:
@@ -108,9 +109,7 @@ class TeamWorkspaceSelect(w.Widget):
         return StateJson()[self.widget_id]["workspaceId"]
 
     def _update_workspace_selector(self):
-        items = [
-            w.Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)
-        ]
+        items = [Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)]
         self.workspace_selector.set(items)
         if self._workspace_id not in [item for item in items]:
             self.workspace_selector.set_value(items[0].value)

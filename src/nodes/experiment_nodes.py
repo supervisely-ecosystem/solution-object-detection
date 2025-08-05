@@ -170,7 +170,7 @@ def _on_train_rt_detr_finished(task_id: int):
         evaluation_report.set_benchmark_dir(report_eval_dir)
         evaluation_report.node.enable()
         if redeploy_settings.is_enabled():
-            sly.logger.info("Redeploying the best model after RT-DETR training.")
+            sly.logger.info("Deploying the best model after RT-DETR training.")
             agent_id = redeploy_settings.get_agent_id()
             deployed_task_id = deploy_custom_model_node.deploy(
                 model=experiments.best_model, agent_id=agent_id
@@ -222,7 +222,7 @@ def _on_train_yolo_finished(task_id: int):
         evaluation_report.set_benchmark_dir(report_eval_dir)
         evaluation_report.node.enable()
         if redeploy_settings.is_enabled():
-            sly.logger.info("Redeploying the best model after YOLO training.")
+            sly.logger.info("Deploying the best model after YOLO training.")
             agent_id = redeploy_settings.get_agent_id()
             deployed_task_id = deploy_custom_model_node.deploy(
                 model=experiments.best_model, agent_id=agent_id

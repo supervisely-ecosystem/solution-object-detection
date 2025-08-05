@@ -31,7 +31,7 @@ graph_builder.add_node(n.splits)
 graph_builder.add_node(n.move_labeled)
 graph_builder.add_node(n.training_project)
 graph_builder.add_node(n.training_project_qa_stats)
-graph_builder.add_node(n.versioning)
+graph_builder.add_node(n.experiments.versioning)
 
 # - RT-DETR training nodes
 graph_builder.add_node(n.rt_detr.train_node)
@@ -110,7 +110,7 @@ graph_builder.add_edge(
 )
 graph_builder.add_edge(n.splits, n.move_labeled)
 graph_builder.add_edge(n.move_labeled, n.training_project)
-graph_builder.add_edge(n.training_project, n.versioning)
+graph_builder.add_edge(n.training_project, n.experiments.versioning)
 graph_builder.add_edge(
     n.training_project_qa_stats,
     n.training_project,
@@ -120,8 +120,8 @@ graph_builder.add_edge(
     end_plug="disc",
     point_anchor={"x": "100%", "y": 29},
 )
-graph_builder.add_edge(n.versioning, n.rt_detr.train_node)
-graph_builder.add_edge(n.versioning, n.yolo.train_node, path="grid")
+graph_builder.add_edge(n.experiments.versioning, n.rt_detr.train_node)
+graph_builder.add_edge(n.experiments.versioning, n.yolo.train_node, path="grid")
 graph_builder.add_edge(
     n.experiments.experiments,
     n.experiments.re_eval,

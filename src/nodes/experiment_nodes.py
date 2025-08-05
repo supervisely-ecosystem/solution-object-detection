@@ -12,6 +12,9 @@ from src.components.evaluation_report import EvaluationReportNode
 from src.components.redeploy_settings import RedeploySettingsNode
 from src.components.send_email.send_email import SendEmail
 from src.components.send_email_node import SendEmailNode
+from src.components.versioning import DataVersioningNode
+
+versioning = DataVersioningNode(x=835, y=1700, api=g.api, project_id=g.training_project.id)
 
 experiments = AllExperimentsNode(x=1500, y=1850, project_id=g.project.id, task_type="detection")
 # experiments.set_best_model("/experiments/73_sample COCO/7958_YOLO/checkpoints/best.pt")
@@ -129,6 +132,7 @@ def _on_train_yolo_started():
 
 @rt_detr.train_node.on_train_finished
 def _on_train_rt_detr_finished(task_id: int):
+    versioning.refresh()
     task_info = g.api.task.get_info_by_id(task_id)
     if task_info is None:
         sly.logger.error(f"Task with ID {task_info['id']} not found.")
@@ -180,6 +184,7 @@ def _on_train_rt_detr_finished(task_id: int):
 
 @yolo.train_node.on_train_finished
 def _on_train_yolo_finished(task_id: int):
+    versioning.refresh()
     task_info = g.api.task.get_info_by_id(task_id)
     if task_info is None:
         sly.logger.error(f"Task with ID {task_info['id']} not found.")

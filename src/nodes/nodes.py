@@ -77,15 +77,6 @@ training_project_qa_stats = sly.solution.LinkNode(
     link=g.training_project.url.replace("datasets", "stats/datasets"),
 )
 
-versioning = sly.solution.LinkNode(
-    x=835,
-    y=1700,
-    title="Data Versioning",
-    description="Versioning allows you to track changes in your datasets over time. Each version is a snapshot of the dataset at a specific point in time, enabling you to revert to previous versions if needed.",
-    width=250,
-    link=g.training_project.url.replace("datasets", "versions"),
-)
-
 ai_index = EmptyNode(
     x=630,
     y=205,

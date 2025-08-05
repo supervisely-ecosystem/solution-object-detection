@@ -13,7 +13,7 @@ from src.nodes.nodes import (
     labeling_project_node,
     move_labeled,
     queue,
-    sampling,
+    smart_sampling,
     splits,
     task_logs,
     training_project,

@@ -17,7 +17,7 @@ graph_builder.add_node(n.auto_import)
 graph_builder.add_node(n.input_project)
 graph_builder.add_node(n.ai_search)
 graph_builder.add_node(n.ai_search_clip)
-graph_builder.add_node(n.sampling)
+graph_builder.add_node(n.smart_sampling)
 
 # labeling nodes
 graph_builder.add_node(n.labeling_project_node)
@@ -59,7 +59,7 @@ graph_builder.add_node(n.experiments.api_inference_node)
 # * Add edges between nodes
 graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
 graph_builder.add_edge(n.auto_import, n.input_project, path="grid")
-graph_builder.add_edge(n.input_project, n.sampling)
+graph_builder.add_edge(n.input_project, n.smart_sampling)
 graph_builder.add_edge(
     n.input_project,
     n.ai_search,
@@ -77,9 +77,9 @@ graph_builder.add_edge(
     end_plug="behind",
 )
 graph_builder.add_edge(
-    n.ai_search, n.sampling, dash=True, start_socket="bottom", end_socket="right", path="grid"
+    n.ai_search, n.smart_sampling, dash=True, start_socket="bottom", end_socket="right", path="grid"
 )
-graph_builder.add_edge(n.sampling, n.labeling_project_node)
+graph_builder.add_edge(n.smart_sampling, n.labeling_project_node)
 graph_builder.add_edge(n.labeling_project_node, n.queue)
 graph_builder.add_edge(n.queue, n.splits)
 graph_builder.add_edge(

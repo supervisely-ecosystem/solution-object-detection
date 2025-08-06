@@ -116,7 +116,7 @@ class EvaluationReportGUI(Widget):
     @property
     def agent_selector(self) -> AgentSelector:
         if not hasattr(self, "_agent_selector"):
-            self._agent_selector = AgentSelector(self.team_id)
+            self._agent_selector = AgentSelector(self.team_id, show_only_gpu=True)
         return self._agent_selector
 
     def get_json_data(self) -> dict:

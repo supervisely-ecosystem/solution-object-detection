@@ -175,7 +175,9 @@ class CompareNode(SolutionElement):
         )
         super().__init__(*args, **kwargs)
 
-        self._eval_dirs = []  # List of directories to compare
+        # self._eval_dirs = []  # List of directories to compare
+        self._previous_best = None  # Store the previous best model eval directory
+        self._new_eval_dir = None  # Store the new evaluation directory
 
         self.result_dir = None
         self.result_link = None
@@ -200,23 +202,51 @@ class CompareNode(SolutionElement):
 
         self._update_properties(self.main_widget.automation_switch.is_switched())
 
-    @property
-    def evaluation_dirs(self) -> List[str]:
-        """
-        Returns the list of evaluation directories.
-        """
-        return self._eval_dirs
+    # @property
+    # def evaluation_dirs(self) -> List[str]:
+    #     """
+    #     Returns the list of evaluation directories.
+    #     """
+    #     return self._eval_dirs
 
-    @evaluation_dirs.setter
-    def evaluation_dirs(self, value: List[str]):
+    # @evaluation_dirs.setter
+    # def evaluation_dirs(self, value: List[str]):
+    #     """
+    #     Sets the evaluation directories and enables the run button if directories are provided.
+    #     """
+    #     self._eval_dirs = value
+    #     if value:
+    #         self._run_btn.enable()
+    #     else:
+    #         self._run_btn.disable()
+
+    @property
+    def best_eval_dir(self) -> Optional[str]:
         """
-        Sets the evaluation directories and enables the run button if directories are provided.
+        Returns the best evaluation directory from the previous run.
         """
-        self._eval_dirs = value
-        if value:
-            self._run_btn.enable()
-        else:
-            self._run_btn.disable()
+        return self._previous_best
+
+    @best_eval_dir.setter
+    def best_eval_dir(self, value: Optional[str]):
+        """
+        Sets the best evaluation directory from the previous run.
+        """
+        self._previous_best = value
+
+    @property
+    def new_eval_dir(self) -> Optional[str]:
+        """
+        Returns the new evaluation directory from the current run.
+        """
+        return self._new_eval_dir
+
+    @new_eval_dir.setter
+    def new_eval_dir(self, value: Optional[str]):
+        """
+        Sets the new evaluation directory from the current run.
+        """
+        self._new_eval_dir = value
 
     @property
     def settings_modal(self) -> Dialog:
@@ -325,22 +355,28 @@ class CompareNode(SolutionElement):
         """
         try:
             self.node.show_in_progress_badge("Comparison")
-            if not self.evaluation_dirs:
+            if not self.new_eval_dir:
                 logger.warning("Not enough evaluation directories provided for comparison.")
-            elif len(self.evaluation_dirs) == 1:
+                self.result_dir = None
+                self.result_link = None
+            elif not self.best_eval_dir:
                 logger.warning(
-                    "Only one evaluation directory provided. Cannot compare. Using the single directory for results."
+                    "Previous best evaluation directory is not set. Using only the new one."
                 )
-                self.result_dir = self.evaluation_dirs[0]
+                self.result_dir = self.new_eval_dir
                 self.result_link = self._get_url_from_lnk_path(self.result_dir)
+                self.best_eval_dir = self.new_eval_dir
+                self.new_eval_dir = None
             else:
                 task_info = self.run_evaluator_session()
                 if task_info is None:
                     raise RuntimeError("Failed to start the evaluation task.")
-                task_info["evaluation_dirs"] = self.evaluation_dirs
+                task_info["evaluation_dirs"] = [self.best_eval_dir, self.new_eval_dir]
                 task_id = task_info["id"]
                 response = self.api.task.send_request(
-                    task_id, self.COMPARISON_ENDPOINT, data={"eval_dirs": self.evaluation_dirs}
+                    task_id,
+                    self.COMPARISON_ENDPOINT,
+                    data={"eval_dirs": [self.best_eval_dir, self.new_eval_dir]},
                 )
                 if "error" in response:
                     task_info["status"] = self.api.task.Status.ERROR
@@ -386,13 +422,18 @@ class CompareNode(SolutionElement):
             )
             return ""
 
-        self.api.file.download(self.team_id, remote_lnk_path, "./model_evaluation_report.lnk")
-        with open("./model_evaluation_report.lnk", "r") as file:
-            base_url = file.read().strip()
-
-        silent_remove("./model_evaluation_report.lnk")
-
-        return base_url
+        temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".lnk", delete=False)
+        try:
+            self.api.file.download(self.team_id, remote_lnk_path, temp_file.name)
+            with open(temp_file.name, "r") as file:
+                base_url = file.read().strip()
+            return base_url
+        except Exception as e:
+            logger.error(f"Failed to read the link file: {e}")
+            return ""
+        finally:
+            if os.path.exists(temp_file.name):
+                silent_remove(temp_file.name)
 
     def _update_properties(self, enable: bool):
         """Update node properties with current settings."""
@@ -411,16 +452,15 @@ class CompareNode(SolutionElement):
         if not primary_metric:
             raise ValueError("Primary metric must be provided for comparison.")
 
-        if len(self.evaluation_dirs) != 2:
-            # raise ValueError("Evaluation directories not set or not enough for comparison.")
-            logger.warning(f"Evaluation directories != 2: {self.evaluation_dirs}")
-            if len(self.evaluation_dirs) < 2:
-                logger.warning("Not enough evaluation directories provided for comparison.")
-                return False
+        if not self.new_eval_dir:
+            logger.warning(f"New evaluation directory is not set.")
+            if not self.best_eval_dir:
+                logger.warning("Best evaluation directory is also not set. Cannot compare models.")
+            return False
 
-        metric_old, _ = self._get_info_from_experiment(primary_metric, self.evaluation_dirs[0])
-        metric_new, new_checkpoint_path = self._get_info_from_experiment(
-            primary_metric, self.evaluation_dirs[-1]
+        metric_old, _ = self._get_info_from_experiment(primary_metric, self.best_eval_dir)
+        metric_new, new_checkpoint = self._get_info_from_experiment(
+            primary_metric, self.new_eval_dir
         )
         if metric_old is None or metric_new is None:
             raise ValueError(f"Primary metric '{primary_metric}' not found in evaluation results.")
@@ -429,14 +469,13 @@ class CompareNode(SolutionElement):
         new_model_better = metric_new > metric_old
         if new_model_better:
             logger.info(f"{primary_metric} of new model is better: {metric_new} > {metric_old}")
-            if new_checkpoint_path:
-                logger.info(f"New best checkpoint path: {new_checkpoint_path}")
-                self.result_best_checkpoint = str(new_checkpoint_path)
-                self.evaluation_dirs = [self.evaluation_dirs[-1]]
+            if new_checkpoint:
+                logger.info(f"New best checkpoint path: {new_checkpoint}")
+                self.result_best_checkpoint = str(new_checkpoint)
+                self.best_eval_dir = self.new_eval_dir
         else:
             logger.info(f"{primary_metric} of new model is worse: {metric_new} <= {metric_old}")
-            self.result_best_checkpoint = None
-            self.evaluation_dirs = [self.evaluation_dirs[0]]
+        self.new_eval_dir = None
         return new_model_better
 
     def _get_experiments_path(self, path: str) -> str:

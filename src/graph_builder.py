@@ -1,6 +1,5 @@
-import supervisely as sly
-
 import src.nodes as n
+import supervisely as sly
 
 # * Create a SolutionGraphBuilder instance
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px", width="3000px")
@@ -15,21 +14,24 @@ graph_builder.add_node(n.definitions)
 graph_builder.add_node(n.cloud_import)
 graph_builder.add_node(n.auto_import)
 graph_builder.add_node(n.input_project)
-graph_builder.add_node(n.ai_search)
-graph_builder.add_node(n.ai_search_clip)
+graph_builder.add_node(n.ai_index)
+graph_builder.add_node(n.open_ai_clip)
 graph_builder.add_node(n.smart_sampling)
+
 
 # labeling nodes
 graph_builder.add_node(n.labeling_project_node)
 graph_builder.add_node(n.queue)
 graph_builder.add_node(n.labeling_performance)
+graph_builder.add_node(n.pre_labeling)
 
 # EXPERIMENT NODES:
 # - training preparation nodes
 graph_builder.add_node(n.splits)
 graph_builder.add_node(n.move_labeled)
 graph_builder.add_node(n.training_project)
-graph_builder.add_node(n.versioning)
+graph_builder.add_node(n.training_project_qa_stats)
+graph_builder.add_node(n.experiments.versioning)
 
 # - RT-DETR training nodes
 graph_builder.add_node(n.rt_detr.train_node)
@@ -61,25 +63,41 @@ graph_builder.add_edge(n.cloud_import, n.input_project, path="grid")
 graph_builder.add_edge(n.auto_import, n.input_project, path="grid")
 graph_builder.add_edge(n.input_project, n.smart_sampling)
 graph_builder.add_edge(
+    n.ai_index,
     n.input_project,
-    n.ai_search,
     dash=True,
     start_socket="right",
     end_socket="left",
     end_plug="behind",
 )
 graph_builder.add_edge(
-    n.ai_search,
-    n.ai_search_clip,
+    n.open_ai_clip,
+    n.ai_index,
     dash=True,
     start_socket="right",
     end_socket="left",
     end_plug="behind",
 )
 graph_builder.add_edge(
-    n.ai_search, n.smart_sampling, dash=True, start_socket="bottom", end_socket="right", path="grid"
+    n.ai_index, n.smart_sampling, dash=True, start_socket="bottom", end_socket="right", path="grid"
 )
-graph_builder.add_edge(n.smart_sampling, n.labeling_project_node)
+graph_builder.add_edge(n.sampling, n.labeling_project_node)
+graph_builder.add_edge(
+    n.sampling,
+    n.pre_labeling,
+    start_socket="right",
+    path="grid",
+    dash=True,
+    label="if custom model is deployed",
+    label_offset=-50,
+)
+graph_builder.add_edge(
+    n.pre_labeling,
+    n.labeling_project_node,
+    start_socket="left",
+    path="grid",
+    dash=True,
+)
 graph_builder.add_edge(n.labeling_project_node, n.queue)
 graph_builder.add_edge(n.queue, n.splits)
 graph_builder.add_edge(
@@ -93,9 +111,18 @@ graph_builder.add_edge(
 )
 graph_builder.add_edge(n.splits, n.move_labeled)
 graph_builder.add_edge(n.move_labeled, n.training_project)
-graph_builder.add_edge(n.training_project, n.versioning)
-graph_builder.add_edge(n.versioning, n.rt_detr.train_node)
-graph_builder.add_edge(n.versioning, n.yolo.train_node, path="grid")
+graph_builder.add_edge(n.training_project, n.experiments.versioning)
+graph_builder.add_edge(
+    n.training_project_qa_stats,
+    n.training_project,
+    start_socket="left",
+    end_socket="right",
+    dash=True,
+    end_plug="disc",
+    point_anchor={"x": "100%", "y": 29},
+)
+graph_builder.add_edge(n.experiments.versioning, n.rt_detr.train_node)
+graph_builder.add_edge(n.experiments.versioning, n.yolo.train_node, path="grid")
 graph_builder.add_edge(
     n.experiments.experiments,
     n.experiments.re_eval,
@@ -195,6 +222,13 @@ graph_builder.add_edge(
     n.experiments.api_inference_node,
     end_socket="left",
     path="grid",
+)
+graph_builder.add_edge(
+    n.experiments.deploy_custom_model_node,
+    n.pre_labeling,
+    start_socket="left",
+    end_socket="right",
+    dash=True,
 )
 
 # * Build the layout

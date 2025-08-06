@@ -16,13 +16,13 @@ app.call_before_shutdown(TasksScheduler().shutdown)
 
 @n.cloud_import.on_start
 def _on_cloud_import_start():
-    n.cloud_import.run_modal.hide()
-    n.cloud_import.main_widget.path_input.set_value("")
+    n.cloud_import.modal.hide()
+    n.cloud_import.gui.path_input.set_value("")
 
 
 @n.cloud_import.on_finish
 def _on_cloud_import_finish(task_id: int):
-    n.cloud_import.main_widget.wait_import_completion(task_id)
+    n.cloud_import.gui.wait_import_completion(task_id)
 
     upd_project = g.api.project.get_info_by_id(g.project.id)
     full_history = upd_project.custom_data.get("import_history", {}).get("tasks", [])
@@ -32,30 +32,33 @@ def _on_cloud_import_finish(task_id: int):
     last_update = last_task.get("items_count")
     if last_update is not None:
         n.input_project.update(new_items_count=last_update)
-        n.sampling.update_sampling_widgets(updated_project_info=upd_project)
+        n.smart_sampling.update_widgets(updated_project_info=upd_project)
 
 
-@n.cloud_import.automation_btn.click
+@n.cloud_import.automation.apply_button.click
 def _on_apply_automation_btn_click():
-    n.cloud_import.automation_modal.hide()
-    n.cloud_import.apply_automation(n.cloud_import.main_widget.run)
+    n.cloud_import.automation.modal.hide()
+    n.cloud_import.apply_automation(n.cloud_import.run)
 
 
-@n.sampling.on_start
+@n.smart_sampling.on_start
 def _on_sampling_start():
-    n.sampling.main_modal.hide()
-    n.sampling.automation_modal.hide()
-    sample_settinngs = n.sampling.main_widget.get_sample_settings()
+    n.smart_sampling.gui.modal.hide()
+    n.smart_sampling.automation.modal.hide()
+    sample_settinngs = n.smart_sampling.gui.get_settings()
     if not sample_settinngs.get("sample_size") and not sample_settinngs.get("limit"):
         sly.logger.error("Sampling stopped: sample size and limit are not set or both are zero.")
 
 
-@n.sampling.on_finish
+@n.smart_sampling.on_finish
 def _on_sampling_finish(res):
     if not res:
         sly.logger.error("Sampling was not finished successfully.")
         return
     src, dst, images_count = res
+    n.labeling_project_node.update(new_items_count=images_count)
+    n.smart_sampling.update_widgets()
+
     images = []
     for imgs in dst.values():
         images.extend(imgs)
@@ -111,10 +114,10 @@ sly.app.restore_data_state(g.task_id)
 
 # # * Some restoration logic (!AFTER restore_data_state)
 if n.cloud_import.automation.enabled_checkbox.is_checked():
-    n.cloud_import.apply_automation(n.cloud_import.main_widget.run)
+    n.cloud_import.apply_automation(n.cloud_import.run)
 
-if n.sampling.automation.enabled_checkbox.is_checked():
-    n.sampling.apply_automation(n.sampling.run)
+if n.smart_sampling.automation.enabled_checkbox.is_checked():
+    n.smart_sampling.apply_automation(n.smart_sampling.run)
 
 if n.move_labeled.automation.enabled_checkbox.is_checked():
     n.move_labeled.apply_automation(_move_labeled_images)

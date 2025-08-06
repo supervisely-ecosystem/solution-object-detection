@@ -10,8 +10,8 @@ automation_tasks = AutomationTasksNode(x=20, y=30)
 task_logs = TaskLogsNode(task_id=g.task_id, x=20, y=100)
 definitions = DefinitionsNode(api=g.api, project_id=g.labeling_project.id, x=20, y=170)
 
-cloud_import = sly.solution.CloudImport(x=680, y=30, api=g.api, project_id=g.project.id)
-auto_import = sly.solution.ManualImport(x=1020, y=30, api=g.api, project_id=g.project.id)
+cloud_import = sly.solution.CloudImportNode(x=680, y=30, api=g.api, project_id=g.project.id)
+auto_import = sly.solution.AutoImportNode(x=1020, y=30, api=g.api, project_id=g.project.id)
 
 input_project = sly.solution.ProjectNode(
     x=870,
@@ -22,7 +22,7 @@ input_project = sly.solution.ProjectNode(
     description="Centralizes all incoming data. Data in this project will not be modified.",
 )
 
-sampling = sly.solution.SmartSampling(
+sampling = sly.solution.SmartSamplingNode(
     x=835, y=360, api=g.api, project_id=g.project.id, dst_project=g.labeling_project.id
 )
 

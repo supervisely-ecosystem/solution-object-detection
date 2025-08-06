@@ -14,7 +14,7 @@ from src.nodes.nodes import (
     open_ai_clip,
     pre_labeling,
     queue,
-    sampling,
+    smart_sampling,
     splits,
     task_logs,
     training_project,

@@ -81,9 +81,9 @@ graph_builder.add_edge(
 graph_builder.add_edge(
     n.ai_index, n.smart_sampling, dash=True, start_socket="bottom", end_socket="left", path="grid"
 )
-graph_builder.add_edge(n.sampling, n.labeling_project_node)
+graph_builder.add_edge(n.smart_sampling, n.labeling_project_node)
 graph_builder.add_edge(
-    n.sampling,
+    n.smart_sampling,
     n.pre_labeling,
     start_socket="right",
     path="grid",

@@ -22,7 +22,7 @@ input_project = sly.solution.ProjectNode(
     description="Centralizes all incoming data. Data in this project will not be modified.",
 )
 
-sampling = sly.solution.SmartSamplingNode(
+smart_sampling = sly.solution.SmartSamplingNode(
     x=835, y=360, api=g.api, project_id=g.project.id, dst_project=g.labeling_project.id
 )
 

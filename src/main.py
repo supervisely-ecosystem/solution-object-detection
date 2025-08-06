@@ -61,7 +61,7 @@ def _on_sampling_finish(res):
         n.pre_labeling.run(images=images)
         # n.pre_labeling.run_async(images=images)
     n.labeling_project_node.update(new_items_count=images_count)
-    n.sampling.update_sampling_widgets()
+    n.smart_sampling.update_sampling_widgets()
     n.queue.refresh_info()
     n.splits.set_items_count(images_count)
 

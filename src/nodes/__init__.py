@@ -16,6 +16,7 @@ from src.nodes.nodes import (
     sampling,
     splits,
     task_logs,
+    training_data,
     training_project,
     versioning,
 )

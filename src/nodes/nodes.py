@@ -1,9 +1,9 @@
-import supervisely as sly
-
 import src.sly_globals as g
+import supervisely as sly
 from src.components.automation_tasks import AutomationTasksNode
 from src.components.definitions import DefinitionsNode
 from src.components.task_logs import TaskLogsNode
+from src.components.training_data import TrainingDataNode
 
 automation_tasks = AutomationTasksNode(x=20, y=30)
 task_logs = TaskLogsNode(task_id=g.task_id, x=20, y=100)
@@ -55,6 +55,15 @@ move_labeled = sly.solution.MoveLabeled(
     api=g.api,
     src_project_id=g.labeling_project.id,
     dst_project_id=g.training_project.id,
+)
+
+training_data = TrainingDataNode(
+    api=g.api,
+    title="Add Training Data",
+    x=285,
+    y=1532,
+    team_id=sly.env.team_id(),
+    workspace_id=sly.env.workspace_id(),
 )
 
 training_project = sly.solution.ProjectNode(

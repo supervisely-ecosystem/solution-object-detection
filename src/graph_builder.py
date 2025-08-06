@@ -1,6 +1,5 @@
-import supervisely as sly
-
 import src.nodes as n
+import supervisely as sly
 
 # * Create a SolutionGraphBuilder instance
 graph_builder = sly.solution.SolutionGraphBuilder(height="2800px", width="3000px")
@@ -28,6 +27,7 @@ graph_builder.add_node(n.labeling_performance)
 # - training preparation nodes
 graph_builder.add_node(n.splits)
 graph_builder.add_node(n.move_labeled)
+graph_builder.add_node(n.training_data)
 graph_builder.add_node(n.training_project)
 graph_builder.add_node(n.versioning)
 
@@ -93,6 +93,7 @@ graph_builder.add_edge(
 )
 graph_builder.add_edge(n.splits, n.move_labeled)
 graph_builder.add_edge(n.move_labeled, n.training_project)
+graph_builder.add_edge(n.training_data, n.training_project, start_socket="right", end_socket="left")
 graph_builder.add_edge(n.training_project, n.versioning)
 graph_builder.add_edge(n.versioning, n.rt_detr.train_node)
 graph_builder.add_edge(n.versioning, n.yolo.train_node, path="grid")

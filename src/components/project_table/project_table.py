@@ -1,160 +1,15 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
-from supervisely import env
+from src.components.team_workspace_select.team_workspace_select import (
+    TeamWorkspaceSelect,
+)
 from supervisely.api.api import SERVER_ADDRESS, Api
+from supervisely.api.dataset_api import DatasetInfo
 from supervisely.api.module_api import ApiField
 from supervisely.api.project_api import ProjectInfo
-from supervisely.app.content import DataJson, StateJson
-from supervisely.app.widgets import Container, Empty, Select, Text
 from supervisely.app.widgets.selectable_fast_table import SelectableFastTable
-from supervisely.app.widgets.widget import Widget
 from supervisely.project import ProjectType
-
-
-class TeamWorkspaceSelect(Widget):
-    class Routes:
-        VALUE_CHANGED = "value_changed"
-
-    def __init__(
-        self,
-        show_label: bool = True,
-        direction: Literal["horizontal", "vertical"] = "vertical",
-        default_team_id: Optional[int] = None,
-        default_workspace_id: Optional[int] = None,
-        size: Literal["large", "small", "mini"] = None,
-        widget_id=None,
-    ):
-        self._api = Api()
-        self._direction = direction
-        self._show_label = show_label
-        self._size = size
-        self._team_id = default_team_id
-        self._workspace_id = default_workspace_id
-        if self._team_id is None and self._workspace_id is None:
-            self._team_id = env.team_id()
-            self._workspace_id = self._api.workspace.get_list(self._team_id)[0].id
-        elif self._team_id is None and self._workspace_id is not None:
-            self._team_id = self._api.workspace.get_info_by_id(self._workspace_id).team_id
-        elif self._team_id is not None and self._workspace_id is not None:
-            actual_workspace_team_id = self._api.workspace.get_info_by_id(
-                self._workspace_id
-            ).team_id
-            if self._team_id != actual_workspace_team_id:
-                raise ValueError(
-                    f"Provided team_id {self._team_id} does not match the team of the workspace {self._workspace_id}."
-                )
-        self.team_selector.set_value(self._team_id)
-        self.workspace_selector.set_value(self._workspace_id)
-        self._style = (
-            "justify-content: center; align-items: center;" if direction == "horizontal" else ""
-        )
-        self._gap = 15 if direction == "horizontal" else 10
-        self._changes_handled = False
-        super().__init__(widget_id=widget_id, file_path=__file__)
-
-    @property
-    def _content(self):
-        return Container(
-            [
-                self.team_label,
-                self.team_selector,
-                self.workspace_label,
-                self.workspace_selector,
-            ],
-            direction=self._direction,
-            style=self._style,
-            gap=self._gap,
-        )
-
-    @property
-    def team_selector(self):
-        if not hasattr(self, "_team_selector"):
-            items = [Select.Item(team.id, team.name) for team in self._api.team.get_list()]
-            select = Select(items=items, size=self._size)
-
-            @select.value_changed
-            def on_team_change(value: int):
-                self._team_id = value
-                self._update_workspace_selector()
-
-                if hasattr(self, "_value_change_callback") and self._value_change_callback:
-                    result = {"teamId": self._team_id, "workspaceId": self._workspace_id}
-                    self._value_change_callback(result)
-
-            self._team_selector = select
-        return self._team_selector
-
-    @property
-    def workspace_selector(self):
-        if not hasattr(self, "_workspace_selector"):
-            items = [
-                Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)
-            ]
-            select = Select(items=items, size=self._size)
-
-            @select.value_changed
-            def on_workspace_change(value: int):
-                self._workspace_id = value
-                StateJson()[self.widget_id]["workspaceId"] = value
-                StateJson().send_changes()
-
-                if hasattr(self, "_workspace_change_callback") and self._workspace_change_callback:
-                    result = {"teamId": self._team_id, "workspaceId": value}
-                    self._workspace_change_callback(result)
-
-            self._workspace_selector = select
-        return self._workspace_selector
-
-    @property
-    def team_label(self):
-        if not hasattr(self, "_team_label"):
-            if self._show_label:
-                self._team_label = Text(text="Team")
-            else:
-                self._team_label = Empty()
-        return self._team_label
-
-    @property
-    def workspace_label(self):
-        if not hasattr(self, "_workspace_label"):
-            if self._show_label:
-                self._workspace_label = Text(text="Workspace")
-            else:
-                self._workspace_label = Empty()
-        return self._workspace_label
-
-    def get_selected_team_id(self) -> Optional[int]:
-        return StateJson()[self.widget_id]["teamId"]
-
-    def get_selected_workspace_id(self) -> Optional[int]:
-        return StateJson()[self.widget_id]["workspaceId"]
-
-    def _update_workspace_selector(self):
-        items = [Select.Item(ws.id, ws.name) for ws in self._api.workspace.get_list(self._team_id)]
-        self.workspace_selector.set(items)
-        if self._workspace_id not in [item for item in items]:
-            self.workspace_selector.set_value(items[0].value)
-        else:
-            self.workspace_selector.set_value(self._workspace_id)
-
-    def get_json_data(self):
-        return {}
-
-    def get_json_state(self):
-        return {"teamId": self._team_id, "workspaceId": self._workspace_id}
-
-    def get_value(self):
-        """Returns the current workspace selection info"""
-        return {"teamId": self._team_id, "workspaceId": self._workspace_id}
-
-    def value_changed(self, func):
-        """Register a callback function to be called when team or workspace selection changes"""
-        self._value_change_callback = func
-        self._changes_handled = True
-        self._workspace_change_callback = func
-
-        return func
 
 
 class ProjectTable(SelectableFastTable):
@@ -193,8 +48,9 @@ class ProjectTable(SelectableFastTable):
         ]
 
         @self.team_workspace_select.value_changed
-        def on_team_workspace_change(value: Dict[str, int]):
-            self._team_id, self._workspace_id = value.values()
+        def on_team_workspace_change():
+            self._team_id = self.team_workspace_select.get_selected_team_id()
+            self._workspace_id = self.team_workspace_select.get_selected_workspace_id()
             self.loading = True
             self._refresh_table()
             self.loading = False
@@ -329,30 +185,30 @@ class ProjectTable(SelectableFastTable):
         """
         return self._projects
 
-    # def project_selection_changed(
-    #     self, func: Callable[[Optional[ProjectInfo]], Any]
-    # ) -> Callable[[], None]:
-    #     """Decorator for function that handles project selection change events.
+    def project_selection_changed(
+        self, func: Callable[[Optional[ProjectInfo]], Any]
+    ) -> Callable[[], None]:
+        """Decorator for function that handles project selection change events.
 
-    #     :param func: Function that handles project selection change, receives selected ProjectInfo or None
-    #     :type func: Callable[[Optional[ProjectInfo]], Any]
-    #     :return: Decorated function
-    #     :rtype: Callable[[], None]
-    #     """
+        :param func: Function that handles project selection change, receives selected ProjectInfo or None
+        :type func: Callable[[Optional[ProjectInfo]], Any]
+        :return: Decorated function
+        :rtype: Callable[[], None]
+        """
 
-    #     @self.selection_changed
-    #     def _on_selection_changed(selected_row):
-    #         selected_project = self.get_selected_project()
-    #         func(selected_project)
+        @self.selection_changed
+        def _on_selection_changed(selected_row):
+            selected_project = self.get_selected_project()
+            func(selected_project)
 
-    #     return _on_selection_changed
+        return _on_selection_changed
 
 
 # @ TODO: Autoselect all datasets on init
 class DatasetTable(SelectableFastTable):
     def __init__(
         self,
-        project_id: int,
+        project_id: int = None,
         sort_by: Literal["id", "name", "created_at", "items"] = "id",
         sort_order: Literal["asc", "desc"] = "asc",
         page_size: int = 10,
@@ -361,6 +217,8 @@ class DatasetTable(SelectableFastTable):
     ):
         self._api = Api()
         self._project_id = project_id
+        self._datasets = []
+        self._dataset_id_to_info = {}
 
         columns = ["Dataset", "ID", "Created At", "Items"]
 
@@ -379,7 +237,7 @@ class DatasetTable(SelectableFastTable):
             {},  # Items column
         ]
 
-        table_data = self._get_table_data()
+        table_data = self._get_table_data() if project_id else []
         super().__init__(
             data=table_data,
             columns=columns,
@@ -394,6 +252,18 @@ class DatasetTable(SelectableFastTable):
             header_left_content=None,
         )
 
+    def set_project(self, project_id: int):
+        """Sets the project ID and refreshes the dataset table."""
+        self._project_id = project_id
+        table_data = self._get_table_data()
+        self._source_data = self._prepare_input_data(table_data)
+        (
+            self._parsed_source_data,
+            self._sliced_data,
+            self._parsed_active_data,
+        ) = self._prepare_working_data()
+        self._filter_changed()
+
     def _get_table_data(self) -> List[List[Any]]:
         """Refresh the table with current project datasets."""
         datasets = []
@@ -404,6 +274,9 @@ class DatasetTable(SelectableFastTable):
             id_to_full_name[dataset_info.id] = full_name
             id_to_image_preview[dataset_info.id] = dataset_info.image_preview_url
             datasets.append(dataset_info)
+
+        self._datasets = datasets
+        self._dataset_id_to_info = {d.id: d for d in datasets}
 
         table_data = []
         for dataset in datasets:
@@ -421,3 +294,40 @@ class DatasetTable(SelectableFastTable):
             table_data.append(row_data)
 
         return table_data
+
+    def get_selected_datasets(self) -> List[DatasetInfo]:
+        """Returns the selected datasets info.
+
+        :return: List of selected dataset info objects
+        :rtype: List[DatasetInfo]
+        """
+        selected_rows = self.get_selected_rows()
+        if not selected_rows:
+            return []
+
+        selected_datasets = []
+        for row in selected_rows:
+            dataset_id = row.row[1]
+            dataset_info = self._dataset_id_to_info.get(dataset_id)
+            if dataset_info:
+                selected_datasets.append(dataset_info)
+
+        return selected_datasets
+
+    def dataset_selection_changed(
+        self, func: Callable[[List[DatasetInfo]], Any]
+    ) -> Callable[[], None]:
+        """Decorator for function that handles dataset selection change events.
+
+        :param func: Function that handles dataset selection change, receives list of selected DatasetInfo
+        :type func: Callable[[List[DatasetInfo]], Any]
+        :return: Decorated function
+        :rtype: Callable[[], None]
+        """
+
+        @self.selection_changed
+        def _on_selection_changed(selected_rows):
+            selected_datasets = self.get_selected_datasets()
+            func(selected_datasets)
+
+        return _on_selection_changed

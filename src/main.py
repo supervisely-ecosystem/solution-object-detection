@@ -35,12 +35,6 @@ def _on_cloud_import_finish(task_id: int):
         n.smart_sampling.update_widgets(updated_project_info=upd_project)
 
 
-@n.cloud_import.automation.apply_button.click
-def _on_apply_automation_btn_click():
-    n.cloud_import.automation.modal.hide()
-    n.cloud_import.apply_automation(n.cloud_import.run)
-
-
 @n.smart_sampling.on_start
 def _on_sampling_start():
     n.smart_sampling.gui.modal.hide()

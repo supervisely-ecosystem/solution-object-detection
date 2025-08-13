@@ -1,6 +1,9 @@
+import tempfile
+from pathlib import Path
 from typing import List, Literal, Optional
 
 from src.components.project_table.project_table import DatasetTable, ProjectTable
+from supervisely import OpenMode, Project
 from supervisely.api.api import Api
 from supervisely.app import DataJson
 from supervisely.app.widgets import (
@@ -15,16 +18,19 @@ from supervisely.app.widgets import (
     Text,
     Widget,
 )
+from supervisely.nn.training.gui.train_val_splits_selector import TrainValSplitsSelector
 from supervisely.project.project_type import ProjectType
 from supervisely.solution.base_node import SolutionCardNode, SolutionElement
 
 
+class ActivePage:
+    PROJECT = "project"
+    DATASET = "dataset"
+    SPLITS = "splits"
+
+
 # @TODO: DataJson save/load methods
 class TrainingDataGUI(Widget):
-    class ActivePage:
-        PROJECT = "project"
-        DATASET = "dataset"
-        SPLITS = "splits"
 
     def __init__(
         self,
@@ -37,7 +43,7 @@ class TrainingDataGUI(Widget):
         self.team_id = team_id
         self.workspace_id = workspace_id
 
-        self._active_page = self.ActivePage.PROJECT
+        self._active_page = ActivePage.PROJECT
 
         super().__init__(widget_id=widget_id)
 
@@ -60,7 +66,7 @@ class TrainingDataGUI(Widget):
                         Text(desc),
                         Empty(style="height: 20px;"),
                         self.reloadable_area,
-                        Flexbox([self.back_btn, self.next_btn, self.run_btn]),
+                        Flexbox([self.back_btn, self.next_btn, self.run_btn], gap=5),
                     ]
                 ),
             )
@@ -73,7 +79,7 @@ class TrainingDataGUI(Widget):
 
     @active_page.setter
     def active_page(self, value: Literal["project", "dataset", "splits"]):
-        if value not in self.ActivePage.__dict__.values():
+        if value not in ActivePage.__dict__.values():
             raise ValueError("active_page must be either 'project', 'dataset' or 'splits'")
         DataJson()[self.widget_id]["active_page"] = value
         DataJson().send_changes()
@@ -97,11 +103,12 @@ class TrainingDataGUI(Widget):
 
             @self._next_btn.click
             def _on_next_click():
-                if self.active_page == self.ActivePage.PROJECT:
+                if self.active_page == ActivePage.PROJECT:
                     self.dataset_table.set_project(self.project_table.get_selected_project().id)
-                    self.active_page = self.ActivePage.DATASET
-                elif self.active_page == self.ActivePage.DATASET:
-                    self.active_page = self.ActivePage.SPLITS
+                    self.active_page = ActivePage.DATASET
+                elif self.active_page == ActivePage.DATASET:
+                    self._set_selected_project_fs()
+                    self.active_page = ActivePage.SPLITS
                 self._set_modal_by_active_page(reload=True)
 
         return self._next_btn
@@ -110,18 +117,15 @@ class TrainingDataGUI(Widget):
     def back_btn(self) -> Button:
         if not hasattr(self, "_back_btn"):
             self._back_btn = Button(
-                "Back",
-                button_size="small",
-                icon="zmdi zmdi-arrow-left",
-                style="primary",
+                "Back", button_size="small", icon="zmdi zmdi-arrow-left", plain=True
             )
 
             @self._back_btn.click
             def _on_back_click():
-                if self.active_page == self.ActivePage.DATASET:
-                    self.active_page = self.ActivePage.PROJECT
-                elif self.active_page == self.ActivePage.SPLITS:
-                    self.active_page = self.ActivePage.DATASET
+                if self.active_page == ActivePage.DATASET:
+                    self.active_page = ActivePage.PROJECT
+                elif self.active_page == ActivePage.SPLITS:
+                    self.active_page = ActivePage.DATASET
                 self._set_modal_by_active_page(reload=True)
 
         return self._back_btn
@@ -171,15 +175,21 @@ class TrainingDataGUI(Widget):
         return self._dataset_table
 
     @property
+    def splits_selector(self) -> TrainValSplitsSelector:
+        if not hasattr(self, "_splits_selector"):
+            self._splits_selector = TrainValSplitsSelector(
+                api=self.api,
+                project_id=self.project_table.get_selected_project().id,
+            )
+        return self._splits_selector
+
+    @property
     def splits_table(self) -> Container:
         if not hasattr(self, "_splits_table"):
-            self._splits_table = Container(
-                [
-                    Text("Not implemented yet"),
-                ]
-            )
+            self._splits_table = self.splits_selector.container
         return self._splits_table
 
+    # @TODO: add splits
     def get_json_data(self) -> dict:
         selected_project_id = None
         proj = self.project_table.get_selected_project()
@@ -199,7 +209,7 @@ class TrainingDataGUI(Widget):
         return {}
 
     def _set_modal_by_active_page(self, reload: bool = False) -> Widget:
-        if self.active_page == self.ActivePage.PROJECT:
+        if self.active_page == ActivePage.PROJECT:
             self.reloadable_area.set_content(self.project_table)
             self.back_btn.hide()
             self.next_btn.show()
@@ -208,7 +218,7 @@ class TrainingDataGUI(Widget):
                 self.next_btn.disable()
             else:
                 self.next_btn.enable()
-        elif self.active_page == self.ActivePage.DATASET:
+        elif self.active_page == ActivePage.DATASET:
             self.reloadable_area.set_content(self.dataset_table)
             self.back_btn.show()
             self.next_btn.show()
@@ -217,14 +227,51 @@ class TrainingDataGUI(Widget):
                 self.next_btn.disable()
             else:
                 self.next_btn.enable()
-        elif self.active_page == self.ActivePage.SPLITS:
+        elif self.active_page == ActivePage.SPLITS:
             self.reloadable_area.set_content(self.splits_table)
             self.back_btn.show()
             self.next_btn.hide()
             self.run_btn.show()
-            # TODO: splits_selected -> enable/disable run_btn
         if reload:
             self.reloadable_area.reload()
+
+    @property
+    def download_folder(self) -> str:
+        if not hasattr(self, "_download_folder"):
+            self._download_folder = tempfile.mkdtemp()
+        return self._download_folder
+
+    def destroy_download_folder(self):
+        if hasattr(self, "_download_folder"):
+            Path(self._download_folder).rmdir()
+
+    def _set_selected_project_fs(self):
+        project_info = self.project_table.get_selected_project()
+        selected_ds_ids = [ds_info.id for ds_info in self.dataset_table.get_selected_datasets()]
+
+        # with tempfile.TemporaryDirectory() as temp_dir:
+        #     project_folder = f"{temp_dir}/{project_info.name}"
+        #     Path(project_folder).mkdir(parents=True, exist_ok=True)
+        #     Project.download(
+        #         self.api,
+        #         project_info.id,
+        #         dataset_ids=selected_ds_ids,
+        #         dest_dir=project_folder,
+        #     )
+        #     project_fs = Project(project_folder, OpenMode.READ)
+        #     self.splits_selector.set_sly_project(project_fs)
+
+        project_folder = f"{self.download_folder}/{project_info.name}"
+        if not Path(project_folder).exists():
+            Path(project_folder).mkdir(parents=True, exist_ok=True)
+            Project.download(
+                self.api,
+                project_info.id,
+                dataset_ids=selected_ds_ids,
+                dest_dir=project_folder,
+            )
+        project_fs = Project(project_folder, OpenMode.READ)
+        self.splits_selector.set_sly_project(project_fs)
 
 
 class TrainingDataNode(SolutionElement):
